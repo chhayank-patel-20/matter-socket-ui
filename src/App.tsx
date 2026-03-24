@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Commission } from './pages/Commission';
 import { Devices } from './pages/Devices';
+import { Groups } from './pages/Groups';
 import { Commands } from './pages/Commands';
 import { Notifications } from './pages/Notifications';
 import { Console } from './pages/Console';
@@ -18,6 +19,7 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/commission" element={<Commission />} />
             <Route path="/devices" element={<Devices />} />
+            <Route path="/groups" element={<Groups />} />
             <Route path="/commands" element={<Commands />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/console" element={<Console />} />

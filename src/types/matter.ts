@@ -18,13 +18,27 @@ export interface MatterNode {
 }
 
 export interface DiscoveredDevice {
-  name?: string;
+  instance_name?: string;
+  host_name?: string;
+  port?: number;
+  long_discriminator?: number;
   vendor_id?: number;
   product_id?: number;
+  commissioning_mode?: number;
+  device_type?: number;
+  device_name?: string;
+  pairing_instruction?: string;
+  pairing_hint?: number;
+  addresses?: string[];
+  // Legacy fields for backward compatibility
+  name?: string;
   discriminator?: number;
   ip_address?: string;
-  commissioning_mode?: number;
-  addresses?: string[];
+}
+
+export interface Group {
+  group_id: number;
+  group_name: string;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';

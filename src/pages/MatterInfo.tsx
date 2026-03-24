@@ -1,3 +1,7 @@
+import { useState } from 'react';
+import { useWS } from '../context/WebSocketContext';
+import { Server, Activity, Database, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+
 const CLUSTERS = [
   { id: '0x0006 (6)', name: 'OnOff', description: 'Switch devices on/off', ui: 'Toggle switch' },
   { id: '0x0008 (8)', name: 'LevelControl', description: 'Brightness / level control', ui: 'Slider' },
@@ -30,18 +34,107 @@ const COMMANDS = [
 const WS_COMMANDS = [
   { cmd: 'get_nodes', desc: 'Get all commissioned nodes', args: '(none)' },
   { cmd: 'get_node', desc: 'Get a specific node by ID', args: '{ node_id: number }' },
-  { cmd: 'discover', desc: 'Discover devices available for commissioning', args: '(none)' },
+  { cmd: 'discover_commissionable_nodes', desc: 'Discover devices available for commissioning', args: '(none)' },
   { cmd: 'commission_with_code', desc: 'Commission using setup code/QR', args: '{ code: string }' },
-  { cmd: 'commission_on_network', desc: 'Commission device already on network', args: '{ setup_pin_code: number, discriminator: number }' },
-  { cmd: 'device_command', desc: 'Send a cluster command to a device', args: '{ node_id, endpoint_id, cluster_id, command_name }' },
-  { cmd: 'read_attribute', desc: 'Read a specific attribute value', args: '{ node_id, endpoint, cluster, attribute }' },
-  { cmd: 'subscribe_attribute', desc: 'Subscribe to live attribute updates', args: '{ node_id, endpoint_id, cluster_id, attribute_id }' },
+  { cmd: 'commission_on_network', desc: 'Commission device already on network', args: '{ setup_pin_code: number, filter_type: number, filter: any }' },
+  { cmd: 'device_command', desc: 'Send a cluster command to a device', args: '{ node_id, endpoint_id, cluster_id, command_name, payload }' },
+  { cmd: 'read_attribute', desc: 'Read a specific attribute value', args: '{ node_id, attribute_path }' },
+  { cmd: 'start_listening', desc: 'Start receiving live events from server', args: '(none)' },
+  { cmd: 'get_groups', desc: 'Get all groups in server registry', args: '(none)' },
+  { cmd: 'add_group', desc: 'Add/update group in server registry', args: '{ group_id, group_name }' },
+  { cmd: 'remove_group', desc: 'Remove group from server registry', args: '{ group_id }' },
+  { cmd: 'group_add_key_set', desc: 'Add group key set to a node', args: '{ node_id, keyset_id, key_hex }' },
+  { cmd: 'group_bind_key_set', desc: 'Bind group to keyset on a node', args: '{ node_id, group_id, keyset_id }' },
+  { cmd: 'init_group_testing_data', desc: 'Initialize group keys (auto-run at startup)', args: '(none)' },
 ];
 
 export function MatterInfo() {
+  const { status, sendCommand } = useWS();
+  const [loading, setLoading] = useState<string | null>(null);
+  const [result, setResult] = useState<unknown | null>(null);
+  const [showResult, setShowResult] = useState(false);
+
+  const handleServerCommand = async (command: string) => {
+    setLoading(command);
+    setResult(null);
+    setShowResult(true);
+    try {
+      const resp = await sendCommand(command);
+      const r = resp as { result?: unknown; error_code?: string; details?: string };
+      if (r.error_code) {
+        setResult({ error: r.details || r.error_code });
+      } else {
+        setResult(r.result);
+      }
+    } catch (e) {
+      setResult({ error: String(e) });
+    } finally {
+      setLoading(null);
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8 pb-12">
       <h1 className="text-2xl font-bold text-gray-900">Matter Reference</h1>
+
+      {/* Server Operations */}
+      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Server className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-semibold text-gray-800">Server Operations</h2>
+        </div>
+        <p className="text-sm text-gray-600">
+          Interact with the Matter Server instance itself. These commands provide global information and diagnostics.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => handleServerCommand('server_info')}
+            disabled={status !== 'connected' || !!loading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 disabled:opacity-50 cursor-pointer"
+          >
+            <Database className="w-4 h-4" /> Get Server Info
+          </button>
+          <button
+            onClick={() => handleServerCommand('diagnostics')}
+            disabled={status !== 'connected' || !!loading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 disabled:opacity-50 cursor-pointer"
+          >
+            <Activity className="w-4 h-4" /> Run Diagnostics
+          </button>
+          <button
+            onClick={() => handleServerCommand('get_vendor_names')}
+            disabled={status !== 'connected' || !!loading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 disabled:opacity-50 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" /> Get Vendor Names
+          </button>
+        </div>
+
+        {showResult && (
+          <div className="mt-4 border border-gray-200 rounded-lg overflow-hidden">
+            <div
+              className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200 cursor-pointer"
+              onClick={() => setShowResult(!showResult)}
+            >
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Command Result</span>
+              {showResult ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </div>
+            {showResult && (
+              <div className="p-4 bg-gray-900 overflow-x-auto min-h-[100px]">
+                {loading ? (
+                  <p className="text-xs text-blue-400 animate-pulse">Running {loading}...</p>
+                ) : result ? (
+                  <pre className="text-xs font-mono text-gray-300">
+                    {JSON.stringify(result, null, 2)}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-gray-500 italic">No data yet. Click a button above.</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Data Model */}
       <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">

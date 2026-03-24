@@ -42,7 +42,7 @@ export function Dashboard() {
             value={urlInput}
             onChange={e => setUrlInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && status === 'disconnected' && handleConnect()}
-            placeholder="ws://localhost:5580/ws"
+            placeholder="ws://10.81.3.38:5580/ws"
             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {status === 'disconnected' ? (

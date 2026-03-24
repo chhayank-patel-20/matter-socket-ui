@@ -1,12 +1,13 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useWS } from '../context/WebSocketContext';
 import { StatusBadge } from './StatusBadge';
-import { Cpu, Terminal, Radio, Zap, BookOpen, LayoutDashboard, Bell } from 'lucide-react';
+import { Cpu, Terminal, Radio, Zap, BookOpen, LayoutDashboard, Bell, Users } from 'lucide-react';
 
 const nav = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/commission', label: 'Commission', icon: Radio },
   { path: '/devices', label: 'Devices', icon: Cpu },
+  { path: '/groups', label: 'Groups', icon: Users },
   { path: '/commands', label: 'Commands', icon: Zap },
   { path: '/notifications', label: 'Live Events', icon: Bell },
   { path: '/console', label: 'Console', icon: Terminal },

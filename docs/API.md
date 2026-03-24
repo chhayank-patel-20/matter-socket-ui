@@ -1,82 +1,241 @@
-# Matter Controller WebSocket API
+# Websocket documentation
 
-Reference for the WebSocket JSON-RPC API exposed by [python-matter-server](https://github.com/home-assistant-libs/python-matter-server).
+This document describes the Websocket API for the Python Matter Server.
 
----
+## Websocket connection
 
-## Connection
+When a client connects to the Matter Server, it will automatically receive a `server_info` message with version information.
 
-**Default endpoint:** `ws://localhost:5580/ws`
+```json
+{
+  "fabric_id": 1,
+  "compressed_fabric_id": 1234567890,
+  "schema_version": 1,
+  "min_supported_schema_version": 1,
+  "sdk_version": "1.0.0",
+  "wifi_credentials_set": true,
+  "thread_credentials_set": false,
+  "bluetooth_enabled": true
+}
+```
 
-The UI connects using the native browser `WebSocket` API. All messages are JSON.
+## Websocket commands
 
----
+### Server Information
 
-## Message Format
+**Get Server Info**
 
-### Request (Client → Server)
+Get version info of the Matter Server.
 
 ```json
 {
   "message_id": "1",
-  "command": "command_name",
-  "args": {}
+  "command": "server_info"
 }
 ```
 
-| Field        | Type   | Description                                      |
-|--------------|--------|--------------------------------------------------|
-| `message_id` | string | Unique ID for matching responses to requests     |
-| `command`    | string | The command name to execute                      |
-| `args`       | object | Command-specific arguments (may be omitted)      |
+**Get Server Diagnostics**
 
-### Response (Server → Client)
+Return a full dump of the server (for diagnostics).
 
 ```json
 {
   "message_id": "1",
-  "result": <any>,
-  "error_code": "optional_error",
-  "details": "optional human-readable error detail"
+  "command": "diagnostics"
 }
 ```
 
-### Server-pushed Events
+**Get Vendor Names**
 
-The server pushes events without a request. These have no `message_id`.
+Get a map of vendor ids to vendor names.
 
-```json
-{
-  "event": "event_name",
-  "data": <any>
-}
-```
-
----
-
-## Commands
-
-### `start_listening`
-
-Subscribe to server-pushed events. Must be called once after connecting to receive real-time updates (attribute changes, node state changes, etc.).
-
-**Request:**
 ```json
 {
   "message_id": "1",
-  "command": "start_listening"
+  "command": "get_vendor_names",
+  "args": {
+    "filter_vendors": [1, 2, 3]
+  }
 }
 ```
 
-**Response:** Returns current server state snapshot.
+### Commissioning
 
----
+**Discover**
 
-### `get_nodes`
+Discover Commissionable Nodes (discovered on BLE or mDNS). Returns the current list. New discoveries will be sent as `discovery_updated` events.
 
-Get all commissioned nodes known to the controller.
+```json
+{
+  "message_id": "1",
+  "command": "discover_commissionable_nodes"
+}
+```
 
-**Request:**
+**Example Response:**
+
+```json
+{
+  "message_id": "1",
+  "result": [
+    {
+      "instance_name": "...",
+      "host_name": "...",
+      "port": 5540,
+      "long_discriminator": 1234,
+      "vendor_id": 1,
+      "product_id": 1,
+      "commissioning_mode": 1,
+      "device_type": 1,
+      "device_name": "My Device",
+      "pairing_instruction": "...",
+      "pairing_hint": 1,
+      "addresses": ["192.168.1.100"]
+    }
+  ]
+}
+```
+
+If the command fails due to internal errors (e.g. `object list can't be used in 'await' expression`), it will return an ErrorResultMessage.
+
+**Set WiFi credentials**
+
+Inform the controller about the WiFi credentials it needs to send when commissioning a new device.
+
+```json
+{
+  "message_id": "1",
+  "command": "set_wifi_credentials",
+  "args": {
+    "ssid": "wifi-name-here",
+    "credentials": "wifi-password-here"
+  }
+}
+```
+
+**Set Thread dataset**
+
+Inform the controller about the Thread credentials it needs to use when commissioning a new device.
+
+```json
+{
+  "message_id": "1",
+  "command": "set_thread_dataset",
+  "args": {
+    "dataset": "put-credentials-here"
+  }
+}
+```
+
+**Set Default Fabric Label**
+
+Set the default fabric label that will be set on a node after successful commissioning.
+
+```json
+{
+  "message_id": "1",
+  "command": "set_default_fabric_label",
+  "args": {
+    "label": "My Home"
+  }
+}
+```
+
+**Update Fabric Label**
+
+Update the fabric label of an already commissioned node.
+
+```json
+{
+  "message_id": "1",
+  "command": "update_fabric_label",
+  "args": {
+    "node_id": 1,
+    "label": "Living Room"
+  }
+}
+```
+
+**Commission with code**
+
+Commission a new device using a pairing code. For WiFi or Thread based devices, the credentials need to be set upfront, otherwise, commissioning will fail. Supports both QR-code syntax (MT:...) and manual pairing code as string.
+
+```json
+{
+  "message_id": "2",
+  "command": "commission_with_code",
+  "args": {
+    "code": "MT:Y.ABCDEFG123456789"
+  }
+}
+```
+
+**Commission on network**
+
+Commission a device already present on the network.
+
+```json
+{
+  "message_id": "2",
+  "command": "commission_on_network",
+  "args": {
+    "setup_pin_code": 12345678,
+    "filter_type": 0,
+    "filter": null
+  }
+}
+```
+
+**Open Commissioning window**
+
+Open a commissioning window to commission a device present on this controller to another.
+Returns code to use as discriminator.
+
+```json
+{
+  "message_id": "2",
+  "command": "open_commissioning_window",
+  "args": {
+    "node_id": 1
+  }
+}
+```
+
+**Get Fabrics**
+
+Get all fabrics commissioned on a node.
+
+```json
+{
+  "message_id": "1",
+  "command": "get_fabrics",
+  "args": {
+    "node_id": 1
+  }
+}
+```
+
+**Remove Fabric**
+
+Remove a specific fabric from a node.
+
+```json
+{
+  "message_id": "1",
+  "command": "remove_fabric",
+  "args": {
+    "node_id": 1,
+    "fabric_index": 1
+  }
+}
+```
+
+### Node Management
+
+**Get Nodes**
+
+Get all nodes already commissioned on the controller.
+
 ```json
 {
   "message_id": "2",
@@ -84,126 +243,151 @@ Get all commissioned nodes known to the controller.
 }
 ```
 
-**Response `result`:** Array of `MatterNode` objects.
+**Get Node**
+
+Get info of a single Node.
 
 ```json
-[
-  {
-    "node_id": 16,
-    "available": true,
-    "date_commissioned": "2024-01-01T00:00:00Z",
-    "last_interview": "2024-01-01T00:01:00Z",
-    "interview_version": 1,
-    "is_controllable": true,
-    "attributes": {
-      "0/40/1": "VendorName",
-      "1/6/0": true
-    }
+{
+  "message_id": "2",
+  "command": "get_node",
+  "args": {
+    "node_id": 1
   }
-]
+}
 ```
 
----
+**Start listening**
 
-### `get_node`
+When the `start_listening` command is issued, the server will dump all existing nodes. From that moment on all events (including node attribute changes) will be forwarded.
 
-Get a single commissioned node by its ID, including full attribute map.
-
-**Request:**
 ```json
 {
   "message_id": "3",
-  "command": "get_node",
+  "command": "start_listening"
+}
+```
+
+**Interview Node**
+
+Manually trigger a full interview of a node.
+
+```json
+{
+  "message_id": "1",
+  "command": "interview_node",
   "args": {
-    "node_id": 16
+    "node_id": 1
   }
 }
 ```
 
-**Response `result`:** Single `MatterNode` object (see `get_nodes` shape).
+**Remove Node**
 
----
+Remove a Matter node/device from the fabric.
 
-### `discover`
-
-Discover Matter devices that are available for commissioning (in commissioning mode).
-
-**Request:**
 ```json
 {
-  "message_id": "4",
-  "command": "discover"
-}
-```
-
-**Response `result`:** Array of discovered device objects.
-
-```json
-[
-  {
-    "name": "Tapo Outlet",
-    "vendor_id": 0x1234,
-    "product_id": 0x5678,
-    "discriminator": 1024,
-    "addresses": ["192.168.1.148"],
-    "commissioning_mode": 1
-  }
-]
-```
-
----
-
-### `commission_with_code`
-
-Commission a device using a Matter setup code (numeric 11-digit code or QR code string starting with `MT:`).
-
-**Request:**
-```json
-{
-  "message_id": "5",
-  "command": "commission_with_code",
+  "message_id": "1",
+  "command": "remove_node",
   "args": {
-    "code": "MT:XXXXXXXXXXXXXXX"
+    "node_id": 1
   }
 }
 ```
 
-**Response `result`:** Assigned `node_id` (integer).
+**Ping Node**
 
----
+Ping node on the currently known IP-address(es).
 
-### `commission_on_network`
-
-Commission a device that is already on the same network using its PIN code and discriminator.
-
-**Request:**
 ```json
 {
-  "message_id": "6",
-  "command": "commission_on_network",
+  "message_id": "1",
+  "command": "ping_node",
   "args": {
-    "setup_pin_code": 12345678,
-    "discriminator": 1024
+    "node_id": 1,
+    "attempts": 1
   }
 }
 ```
 
-**Response `result`:** Assigned `node_id` (integer).
+**Get Node IP Addresses**
 
----
+Return the currently known (scoped) IP-address(es) for a node.
 
-### `device_command`
-
-Send a cluster command to a commissioned device.
-
-**Request:**
 ```json
 {
-  "message_id": "7",
-  "command": "device_command",
+  "message_id": "1",
+  "command": "get_node_ip_addresses",
   "args": {
-    "node_id": 16,
-    "endpoint_id": 1,
+    "node_id": 1,
+    "prefer_cache": false,
+    "scoped": false
+  }
+}
+```
+
+### Groups and Bindings
+
+**Group Add**
+
+Add a node's endpoint to a group.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_add",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1,
+    "group_id": 1,
+    "group_name": "My Group"
+  }
+}
+```
+
+**Group Remove**
+
+Remove a node's endpoint from a group.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_remove",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1,
+    "group_id": 1
+  }
+}
+```
+
+**Group Get Membership**
+
+Get all groups a node's endpoint belongs to.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_get_membership",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1
+  }
+}
+```
+
+**Group Send Command**
+
+Send a command to a group of nodes.
+Note: If the command fails with "Internal Error (0xAC)", the server will automatically attempt to re-initialize group testing data and retry once.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_send_command",
+  "args": {
+    "group_id": 1,
     "cluster_id": 6,
     "command_name": "On",
     "payload": {}
@@ -211,182 +395,475 @@ Send a cluster command to a commissioned device.
 }
 ```
 
-| Field          | Type    | Description                                      |
-|----------------|---------|--------------------------------------------------|
-| `node_id`      | integer | Target node ID                                   |
-| `endpoint_id`  | integer | Target endpoint (usually `1` for main function)  |
-| `cluster_id`   | integer | Cluster ID (e.g. `6` for OnOff)                  |
-| `command_name` | string  | Command name (e.g. `"On"`, `"Off"`, `"Toggle"`)  |
-| `payload`      | object  | Command payload arguments (use `{}` if none)     |
+**Group Add Key Set**
 
-**Example — Turn off a device:**
+Add a group key set to a node. This is required for real devices to receive group commands.
+Standard test key (if omitted): `0102030405060708090a0b0c0d0e0f10`
+
 ```json
 {
-  "message_id": "8",
-  "command": "device_command",
+  "message_id": "1",
+  "command": "group_add_key_set",
   "args": {
-    "node_id": 16,
-    "endpoint_id": 1,
-    "cluster_id": 6,
-    "command_name": "Off",
-    "payload": {}
+    "node_id": 1,
+    "keyset_id": 1,
+    "key_hex": "0102030405060708090a0b0c0d0e0f10"
   }
 }
 ```
 
-**Example — Set brightness to 50%:**
+**Group Bind Key Set**
+
+Bind a group ID to a keyset ID on a node.
+
 ```json
 {
-  "message_id": "9",
-  "command": "device_command",
+  "message_id": "1",
+  "command": "group_bind_key_set",
   "args": {
-    "node_id": 16,
-    "endpoint_id": 1,
-    "cluster_id": 8,
-    "command_name": "MoveToLevel",
-    "payload": {
-      "level": 127,
-      "transition_time": 10
-    }
+    "node_id": 1,
+    "group_id": 1,
+    "keyset_id": 1
   }
 }
 ```
 
----
+**Init Group Testing Data**
 
-### `read_attribute`
+Initialize the controller with test group keys. Required for group commands in development.
+Note: This is automatically called by the server at startup, but can be called manually if needed.
 
-Read the current value of a specific attribute from a device.
-
-**Request:**
 ```json
 {
-  "message_id": "10",
+  "message_id": "1",
+  "command": "init_group_testing_data"
+}
+```
+
+**Get Groups**
+
+Get all groups in the server registry.
+
+```json
+{
+  "message_id": "1",
+  "command": "get_groups"
+}
+```
+
+**Add Group**
+
+Add a group to the server registry.
+
+```json
+{
+  "message_id": "1",
+  "command": "add_group",
+  "args": {
+    "group_id": 1,
+    "group_name": "My Group"
+  }
+}
+```
+
+**Remove Group**
+
+Remove a group from the server registry.
+
+```json
+{
+  "message_id": "1",
+  "command": "remove_group",
+  "args": {
+    "group_id": 1
+  }
+}
+```
+
+**Binding Add**
+
+Add a binding to a node's endpoint.
+
+```json
+{
+  "message_id": "1",
+  "command": "binding_add",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "target_node_id": 2,
+    "target_endpoint_id": 1,
+    "cluster_id": 6
+  }
+}
+```
+
+**Binding Remove**
+
+Remove a binding from a node's endpoint.
+
+```json
+{
+  "message_id": "1",
+  "command": "binding_remove",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "target_node_id": 2,
+    "target_endpoint_id": 1,
+    "cluster_id": 6
+  }
+}
+```
+
+### Attributes and Commands
+
+**Read an attribute**
+
+Here is an example of reading `OnOff` attribute on a switch (OnOff cluster)
+
+```json
+{
+  "message_id": "read",
   "command": "read_attribute",
   "args": {
-    "node_id": 16,
-    "endpoint": 1,
-    "cluster": "OnOff",
-    "attribute": "OnOff"
+    "node_id": 1,
+    "attribute_path": "1/6/0"
   }
 }
 ```
 
-**Response `result`:** The attribute value (boolean, integer, string, etc.).
+**Write an attribute**
 
----
+Here is an example of writing `OnTime` attribute on a switch (OnOff cluster)
 
-### `subscribe_attribute`
-
-Subscribe to live updates for a specific attribute. The server will push an event whenever the value changes.
-
-**Request:**
 ```json
 {
-  "message_id": "11",
-  "command": "subscribe_attribute",
+  "message_id": "write",
+  "command": "write_attribute",
   "args": {
-    "node_id": 16,
-    "endpoint_id": 1,
-    "cluster_id": 6,
-    "attribute_id": 0
+    "node_id": 1,
+    "attribute_path": "1/6/16385",
+    "value": 10
   }
 }
 ```
 
-After subscribing, the server pushes events in the form:
+**Send a command**
+
+Here is an example of turning on a switch (OnOff cluster)
+
+```json
+{
+  "message_id": "example",
+  "command": "device_command",
+  "args": {
+    "endpoint_id": 1,
+    "node_id": 1,
+    "payload": {},
+    "cluster_id": 6,
+    "command_name": "On"
+  }
+}
+```
+
+**Set ACL Entry**
+
+Set access control entries for a node.
+
+```json
+{
+  "message_id": "1",
+  "command": "set_acl_entry",
+  "args": {
+    "node_id": 1,
+    "entry": []
+  }
+}
+```
+
+**Set Node Binding**
+
+Set bindings for a node.
+
+```json
+{
+  "message_id": "1",
+  "command": "set_node_binding",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1,
+    "bindings": []
+  }
+}
+```
+
+### OTA Updates
+
+**Check Node Update**
+
+Check if there is an update for a particular node.
+
+```json
+{
+  "message_id": "1",
+  "command": "check_node_update",
+  "args": {
+    "node_id": 1
+  }
+}
+```
+
+**Update Node**
+
+Update a node to a new software version.
+
+```json
+{
+  "message_id": "1",
+  "command": "update_node",
+  "args": {
+    "node_id": 1,
+    "software_version": 123
+  }
+}
+```
+
+### Miscellaneous
+
+**Import Test Node**
+
+Import test node(s) from a HA or Matter server diagnostics dump.
+
+```json
+{
+  "message_id": "1",
+  "command": "import_test_node",
+  "args": {
+    "dump": "{...}"
+  }
+}
+```
+
+## Websocket events
+
+When a client is listening (after sending the `start_listening` command), it will receive events from the server.
+
+**Node Added**
+
+Fired when a new node is added to the fabric.
+
+```json
+{
+  "event": "node_added",
+  "data": {
+    "node_id": 1,
+    "...": "..."
+  }
+}
+```
+
+**Node Updated**
+
+Fired when a node's information is updated.
+
+```json
+{
+  "event": "node_updated",
+  "data": {
+    "node_id": 1,
+    "...": "..."
+  }
+}
+```
+
+**Node Removed**
+
+Fired when a node is removed from the fabric.
+
+```json
+{
+  "event": "node_removed",
+  "data": 1
+}
+```
+
+**Discovery Updated**
+
+Fired when a commissionable node is discovered or disappears from mDNS.
+
+```json
+{
+  "event": "discovery_updated",
+  "data": {
+    "instance_name": "...",
+    "host_name": "...",
+    "port": 5540,
+    "long_discriminator": 1234,
+    "vendor_id": 1,
+    "product_id": 1,
+    "commissioning_mode": 1,
+    "device_type": 1,
+    "device_name": "...",
+    "pairing_instruction": "...",
+    "pairing_hint": 1,
+    "addresses": ["..."]
+  }
+}
+```
+
+Or for removal:
+
+```json
+{
+  "event": "discovery_updated",
+  "data": {
+    "name": "...",
+    "removed": true
+  }
+}
+```
+
+**Commissioning Progress**
+
+Fired during the commissioning process.
+
+```json
+{
+  "event": "commissioning_progress",
+  "data": {
+    "node_id": 1,
+    "stage": "started"
+  }
+}
+```
+
+**Attribute Updated**
+
+Fired when an attribute value changes.
+
 ```json
 {
   "event": "attribute_updated",
+  "data": [
+    1,
+    "1/6/0",
+    true
+  ]
+}
+```
+
+**Node Event**
+
+Fired when a node event occurs.
+
+```json
+{
+  "event": "node_event",
   "data": {
-    "node_id": 16,
-    "endpoint_id": 1,
-    "cluster_id": 6,
-    "attribute_id": 0,
-    "value": true
+    "node_id": 1,
+    "endpoint_id": 0,
+    "cluster_id": 1,
+    "event_id": 1,
+    "event_number": 1,
+    "priority": 1,
+    "timestamp": 123456789,
+    "timestamp_type": 0,
+    "data": {}
   }
 }
 ```
 
----
+**Server Shutdown**
 
-## Attribute Key Format
-
-Attributes returned by `get_node` use a slash-separated key format:
-
-```
-"<endpoint_id>/<cluster_id>/<attribute_id>": <value>
-```
-
-**Example:**
-```json
-{
-  "1/6/0": true,
-  "0/40/1": "ACME Corp",
-  "0/40/4": "Smart Plug v1"
-}
-```
-
-| Part          | Example | Meaning                         |
-|---------------|---------|---------------------------------|
-| `endpoint_id` | `1`     | Endpoint 1 (main device function) |
-| `cluster_id`  | `6`     | OnOff cluster                   |
-| `attribute_id`| `0`     | OnOff state attribute           |
-
----
-
-## Common Cluster IDs
-
-| Cluster ID | Name                    | Common Attributes / Commands            |
-|------------|-------------------------|-----------------------------------------|
-| `6`        | OnOff                   | Attr `0` = on/off state; Cmds: On, Off, Toggle |
-| `8`        | LevelControl            | Attr `0` = current level; Cmds: MoveToLevel, Move, Step, Stop |
-| `29`       | Descriptor              | Attr `0` = device type list (read-only) |
-| `40`       | BasicInformation        | Vendor name, product name, firmware version |
-| `48`       | GeneralCommissioning    | Commissioning state (internal)          |
-| `49`       | NetworkCommissioning    | Wi-Fi / Thread network config           |
-| `62`       | OperationalCredentials  | NOC, fabric management                  |
-| `768`      | ColorControl            | Hue, saturation, color temperature      |
-| `1024`     | IlluminanceMeasurement  | Attr `0` = measured illuminance         |
-| `1026`     | TemperatureMeasurement  | Attr `0` = measured temperature (×100 °C) |
-| `1030`     | RelativeHumidityMeasurement | Attr `0` = measured humidity (×100 %) |
-| `1280`     | OccupancySensing        | Attr `0` = occupancy bitmap             |
-
----
-
-## Server-pushed Events
-
-Events are received after calling `start_listening`.
-
-| Event name           | Description                                       |
-|----------------------|---------------------------------------------------|
-| `attribute_updated`  | An attribute value changed on a node              |
-| `node_added`         | A new node was commissioned                       |
-| `node_updated`       | A node's data was refreshed                       |
-| `node_removed`       | A node was removed from the fabric                |
-| `node_event`         | A cluster event was triggered on a node           |
-
----
-
-## Error Handling
-
-When a command fails the response contains `error_code` and optionally `details`:
+Fired when the server is shutting down.
 
 ```json
 {
-  "message_id": "5",
-  "error_code": "NODE_NOT_FOUND",
-  "details": "Node with ID 999 does not exist"
+  "event": "server_shutdown",
+  "data": null
 }
 ```
 
-A successful response always has `result` and no `error_code`.
+**Server Info Updated**
 
----
+Fired when the server information is updated.
 
-## UI Limits
+```json
+{
+  "event": "server_info_updated",
+  "data": {
+    "...": "..."
+  }
+}
+```
 
-| Component       | Limit                                              |
-|-----------------|----------------------------------------------------|
-| Debug Console   | Last **200** messages retained (oldest dropped)    |
-| Live Events     | Last **50** events retained (oldest dropped)       |
+**Endpoint Added**
+
+Fired when an endpoint is added to a node.
+
+```json
+{
+  "event": "endpoint_added",
+  "data": {
+    "node_id": 1,
+    "endpoint_id": 1
+  }
+}
+```
+
+**Endpoint Removed**
+
+Fired when an endpoint is removed from a node.
+
+```json
+{
+  "event": "endpoint_removed",
+  "data": {
+    "node_id": 1,
+    "endpoint_id": 1
+  }
+}
+```
+
+## Python script to send a command
+
+Because we use the datamodels of the Matter SDK, this is a little bit more involved.
+Here is an example of turning on a switch:
+
+```python
+import json
+
+# Import the CHIP clusters
+from chip.clusters import Objects as clusters
+
+# Import the ability to turn objects into dictionaries, and vice-versa
+from matter_server.common.helpers.util import dataclass_from_dict,dataclass_to_dict
+
+command = clusters.OnOff.Commands.On()
+payload = dataclass_to_dict(command)
+
+
+message = {
+    "message_id": "example",
+    "command": "device_command",
+    "args": {
+        "endpoint_id": 1,
+        "node_id": 1,
+        "payload": payload,
+        "cluster_id": command.cluster_id,
+        "command_name": "On"
+    }
+}
+
+print(json.dumps(message, indent=2))
+```
+
+You can also provide parameters for the cluster commands. Here's how to change the brightness for example:
+
+```python
+command = clusters.LevelControl.Commands.MoveToLevelWithOnOff(
+  level=int(value), # provide a percentage
+  transitionTime=0, # in seconds
+)
+```

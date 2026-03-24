@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useWS } from '../context/WebSocketContext';
 import type { LogEntry } from '../types/matter';
-import { Trash2, ArrowDown } from 'lucide-react';
+import { Trash2, ArrowDown, FileJson } from 'lucide-react';
 
 const directionStyles: Record<LogEntry['direction'], string> = {
   send: 'text-blue-400',
@@ -23,6 +23,7 @@ export function Console() {
   const [cleared, setCleared] = useState(0);
   const [rawCommand, setRawCommand] = useState('{\n  "command": "get_nodes",\n  "args": {}\n}');
   const [sendError, setSendError] = useState('');
+  const [importDump, setImportDump] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const visibleLogs = logs.slice(cleared);
@@ -44,27 +45,63 @@ export function Console() {
     }
   };
 
+  const handleImport = async () => {
+    setSendError('');
+    try {
+      await sendCommand('import_test_node', { dump: importDump });
+      alert('Test node imported!');
+      setImportDump('');
+    } catch (e) {
+      setSendError(String(e));
+    }
+  };
+
   return (
-    <div className="max-w-5xl mx-auto space-y-4">
+    <div className="max-w-5xl mx-auto space-y-4 pb-12">
       <h1 className="text-2xl font-bold text-gray-900">Debug Console</h1>
 
-      {/* Raw Send */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-700">Send Raw Command</h2>
-        <textarea
-          value={rawCommand}
-          onChange={e => setRawCommand(e.target.value)}
-          rows={5}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-        />
-        {sendError && <p className="text-xs text-red-600">{sendError}</p>}
-        <button
-          onClick={sendRaw}
-          disabled={status !== 'connected'}
-          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
-        >
-          Send
-        </button>
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Raw Send */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <h2 className="text-sm font-semibold text-gray-700">Send Raw Command</h2>
+          <textarea
+            value={rawCommand}
+            onChange={e => setRawCommand(e.target.value)}
+            rows={5}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          />
+          {sendError && !importDump && <p className="text-xs text-red-600">{sendError}</p>}
+          <button
+            onClick={sendRaw}
+            disabled={status !== 'connected'}
+            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+          >
+            Send
+          </button>
+        </div>
+
+        {/* Import Test Node */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <FileJson className="w-4 h-4 text-purple-600" />
+            <h2 className="text-sm font-semibold text-gray-700">Import Test Node</h2>
+          </div>
+          <textarea
+            value={importDump}
+            onChange={e => setImportDump(e.target.value)}
+            rows={5}
+            placeholder="Paste diagnostics dump here..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          />
+          {sendError && importDump && <p className="text-xs text-red-600">{sendError}</p>}
+          <button
+            onClick={handleImport}
+            disabled={status !== 'connected'}
+            className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 cursor-pointer"
+          >
+            Import
+          </button>
+        </div>
       </div>
 
       {/* Log display */}
