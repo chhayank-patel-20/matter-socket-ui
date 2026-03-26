@@ -34,7 +34,7 @@ const COMMANDS = [
 const WS_COMMANDS = [
   {
     cmd: 'server_info',
-    desc: 'Get server version and fabric status.',
+    desc: 'Get server version and status. Pushed immediately on connect.',
     args: [],
     response: {
       fabric_id: 1,
@@ -44,6 +44,20 @@ const WS_COMMANDS = [
       wifi_credentials_set: true,
       bluetooth_enabled: true
     }
+  },
+  {
+    cmd: 'diagnostics',
+    desc: 'Full server dump for debugging (info, nodes, events).',
+    args: [],
+    response: { info: {}, nodes: [], events: [] }
+  },
+  {
+    cmd: 'get_vendor_names',
+    desc: 'Resolve vendor IDs to vendor names from CSA database.',
+    args: [
+      { name: 'filter_vendors', type: 'list[int]', req: false, def: '[]', desc: 'Limit lookup' }
+    ],
+    response: { "4937": "TP-Link" }
   },
   {
     cmd: 'scan_ble_devices',
@@ -61,6 +75,23 @@ const WS_COMMANDS = [
         matter_discriminator: 3840
       }
     ]
+  },
+  {
+    cmd: 'set_wifi_credentials',
+    desc: 'Set WiFi credentials used for upcoming commissioning.',
+    args: [
+      { name: 'ssid', type: 'str', req: true, def: '', desc: 'Network SSID' },
+      { name: 'credentials', type: 'str', req: true, def: '', desc: 'Password' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'set_thread_dataset',
+    desc: 'Set Thread operational dataset for commissioning.',
+    args: [
+      { name: 'dataset', type: 'str', req: true, def: '', desc: 'Hex dataset string' }
+    ],
+    response: null
   },
   {
     cmd: 'commission_with_code',
@@ -92,13 +123,42 @@ const WS_COMMANDS = [
     response: { node_id: 7, available: true }
   },
   {
+    cmd: 'discover_commissionable_nodes',
+    desc: 'List currently discovered nodes waiting for commissioning.',
+    args: [],
+    response: [{ instance_name: "...", addresses: ["192.168.1.42"] }]
+  },
+  {
     cmd: 'open_commissioning_window',
     desc: 'Open window for multi-fabric commissioning.',
     args: [
       { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
-      { name: 'timeout', type: 'int', req: false, def: '300', desc: 'Seconds to stay open' }
+      { name: 'timeout', type: 'int', req: false, def: '300', desc: 'Seconds to stay open' },
+      { name: 'iteration', type: 'int', req: false, def: '1000', desc: 'PBKDF2 iteration count' }
     ],
     response: { setup_pin_code: 12345678, setup_qr_code: "MT:...", discriminator: 3840 }
+  },
+  {
+    cmd: 'get_nodes',
+    desc: 'Get all commissioned nodes currently in the fabric.',
+    args: [],
+    response: [{ node_id: 1, available: true }]
+  },
+  {
+    cmd: 'get_node',
+    desc: 'Get full data for a single commissioned node.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' }
+    ],
+    response: { node_id: 1, available: true, attributes: {} }
+  },
+  {
+    cmd: 'remove_node',
+    desc: 'Permanently remove a node from the fabric.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' }
+    ],
+    response: null
   },
   {
     cmd: 'device_command',
@@ -122,8 +182,18 @@ const WS_COMMANDS = [
     response: true
   },
   {
+    cmd: 'write_attribute',
+    desc: 'Write a value to a node attribute.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'attribute_path', type: 'str', req: true, def: '', desc: 'Format: "1/6/16385"' },
+      { name: 'value', type: 'any', req: true, def: '', desc: 'New value' }
+    ],
+    response: null
+  },
+  {
     cmd: 'group_send_command',
-    desc: 'Send multicast command to a group ID.',
+    desc: 'Send multicast command to a group ID (fire-and-forget).',
     args: [
       { name: 'group_id', type: 'int', req: true, def: '', desc: 'Target group (1-65527)' },
       { name: 'cluster_id', type: 'int', req: true, def: '', desc: 'Cluster' },
@@ -145,7 +215,7 @@ const WS_COMMANDS = [
   },
   {
     cmd: 'group_remove',
-    desc: 'Remove a node endpoint from a group.',
+    desc: 'Remove a node endpoint from a group. Triggers keyset cleanup.',
     args: [
       { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
       { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' },
@@ -164,7 +234,7 @@ const WS_COMMANDS = [
   },
   {
     cmd: 'group_remove_all',
-    desc: 'NUCLEAR OPTION: Remove all group memberships from a node endpoint.',
+    desc: 'NUCLEAR OPTION: Remove all groups and reclaim all keyset slots (3-tier cleanup).',
     args: [
       { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
       { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' }
@@ -179,6 +249,14 @@ const WS_COMMANDS = [
       { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' }
     ],
     response: [100, 200]
+  },
+  {
+    cmd: 'group_debug_info',
+    desc: 'Raw group key state dump for a node. Useful for diagnosing groupcast failures.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' }
+    ],
+    response: { group_key_map: [], controller_tracked_keysets: [] }
   },
   {
     cmd: 'group_add_key_set',
@@ -197,6 +275,23 @@ const WS_COMMANDS = [
       { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
       { name: 'group_id', type: 'int', req: true, def: '', desc: 'Group ID' },
       { name: 'keyset_id', type: 'int', req: true, def: '', desc: 'Keyset ID' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'check_node_update',
+    desc: 'Check if a firmware update is available for a node.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' }
+    ],
+    response: { software_version: 2, software_version_string: "2.0.0" }
+  },
+  {
+    cmd: 'update_node',
+    desc: 'Start an OTA firmware update on a node.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'software_version', type: 'int', req: true, def: '', desc: 'Target version' }
     ],
     response: null
   }

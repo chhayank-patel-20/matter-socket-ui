@@ -61,6 +61,31 @@ export interface Group {
   group_name: string;
 }
 
+export interface NodeGroupMembership {
+  node_id: number;
+  endpoint: number;
+  remaining_capacity: number | null;
+  groups: {
+    group_id: number;
+    group_name: string | null;
+  }[];
+}
+
+export interface GroupDebugInfo {
+  node_id: number;
+  group_key_map: {
+    group_id: number;
+    keyset_id: number;
+  }[];
+  controller_tracked_keysets: number[];
+  inferred_orphaned_keysets: number[];
+  group_key_store_entries: {
+    group_id: number;
+    keyset_id: number;
+  }[];
+  provisioned_nodes_for_group: Record<string, number[]>;
+}
+
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
 export interface LogEntry {

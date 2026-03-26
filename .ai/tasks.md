@@ -14,6 +14,7 @@
 - [x] Phase 7: BLE Scanning and MAC-based commissioning support.
 - [x] Phase 8: Group UI/UX overhaul and local registry migration.
 - [x] Enhanced error handling for CHIP 0xAC and 0x32 errors with automatic retries.
+- [x] Phase 9: Align UI with latest `docs/API.md` (Groups, Debugging, and Complete Reference).
 
 ## Ongoing
 - [ ] No active tasks; implementation aligned with latest `docs/API.md`.

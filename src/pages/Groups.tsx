@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWS } from '../context/WebSocketContext';
-import { Users, Plus, Trash2, Send, Database, CheckCircle, AlertCircle, List, ShieldCheck, X } from 'lucide-react';
-import type { Group } from '../types/matter';
+import { Users, Plus, Trash2, Send, Database, CheckCircle, AlertCircle, List, ShieldCheck, X, Bug } from 'lucide-react';
+import type { Group, NodeGroupMembership, GroupDebugInfo } from '../types/matter';
 
 const LOCAL_STORAGE_KEY = 'matter_ui_group_registry';
 
@@ -23,6 +23,7 @@ export function Groups() {
   const [memberships, setMemberships] = useState<number[]>([]);
   const [nodeGroupDetails, setNodeGroupDetails] = useState<{group_id: number, group_name: string | null}[]>([]);
   const [remainingCapacity, setRemainingCapacity] = useState<number | null>(null);
+  const [debugInfo, setDebugInfo] = useState<GroupDebugInfo | null>(null);
 
   // Group Command State
   const [cmdGroupId, setCmdGroupId] = useState('');
@@ -85,7 +86,7 @@ export function Groups() {
         }
         
         if (command === 'group_list') {
-          const res = r.result as { groups: {group_id: number, group_name: string | null}[], remaining_capacity: number | null };
+          const res = r.result as NodeGroupMembership;
           setNodeGroupDetails(res.groups || []);
           setRemainingCapacity(res.remaining_capacity);
           setMemberships((res.groups || []).map(g => g.group_id));
@@ -95,6 +96,10 @@ export function Groups() {
           setNodeGroupDetails([]);
           setRemainingCapacity(null);
           setMemberships([]);
+        }
+
+        if (command === 'group_debug_info') {
+          setDebugInfo(r.result as GroupDebugInfo);
         }
         
         // If adding a group to a node, also ensure it's in our local registry if a name was provided
@@ -202,10 +207,11 @@ export function Groups() {
                   />
                 </div>
                 <div className="col-span-6">
-                  <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Name</label>
+                  <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Name (Max 16 chars)</label>
                   <input
                     type="text"
                     value={regGroupName}
+                    maxLength={16}
                     onChange={e => setRegGroupName(e.target.value)}
                     placeholder="e.g. Living Room"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
@@ -350,11 +356,19 @@ export function Groups() {
         <div className="lg:col-span-5 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
           {/* Node Membership Card */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-600" />
                 <h2 className="font-semibold text-gray-800">Node Membership</h2>
               </div>
+              <button
+                onClick={() => handleAction('group_debug_info', { node_id: parseInt(nodeId) })}
+                disabled={!nodeId || !!loading}
+                title="Group Debug Info"
+                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer disabled:opacity-30"
+              >
+                <Bug className="w-4 h-4" />
+              </button>
             </div>
             
             <div className="p-6 space-y-4">
@@ -363,7 +377,10 @@ export function Groups() {
                   <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Target Node</label>
                   <select
                     value={nodeId}
-                    onChange={e => setNodeId(e.target.value)}
+                    onChange={e => {
+                      setNodeId(e.target.value);
+                      setDebugInfo(null);
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                   >
                     <option value="">Select a node...</option>
@@ -399,13 +416,14 @@ export function Groups() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Group Name</label>
+                  <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1 text-blue-600">Group Name (Required - Max 16 chars)</label>
                   <input
                     type="text"
                     value={groupName}
+                    maxLength={16}
                     onChange={e => setGroupName(e.target.value)}
                     placeholder="Saved to device"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    className="w-full px-3 py-2 border border-blue-200 bg-blue-50/20 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   />
                 </div>
               </div>
@@ -419,7 +437,7 @@ export function Groups() {
               <div className="flex gap-2">
                 <button
                   onClick={() => handleAction('group_add', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId), group_id: parseInt(groupId), group_name: groupName })}
-                  disabled={status !== 'connected' || !!loading || !nodeId || !groupId}
+                  disabled={status !== 'connected' || !!loading || !nodeId || !groupId || !groupName}
                   className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
                 >
                   Join Group
@@ -484,6 +502,18 @@ export function Groups() {
                       ))
                     )}
                   </div>
+                </div>
+              )}
+
+              {debugInfo && (
+                <div className="mt-4 p-3 bg-gray-900 rounded-lg border border-gray-700 overflow-x-auto">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">Group Debug Info (Node {debugInfo.node_id})</p>
+                    <button onClick={() => setDebugInfo(null)} className="text-gray-500 hover:text-white cursor-pointer"><X className="w-3 h-3" /></button>
+                  </div>
+                  <pre className="text-[9px] font-mono text-gray-300 whitespace-pre-wrap leading-tight">
+                    {JSON.stringify(debugInfo, null, 2)}
+                  </pre>
                 </div>
               )}
             </div>

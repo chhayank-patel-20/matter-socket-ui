@@ -17,3 +17,7 @@
   - *Rationale:* Added support for `scan_ble_devices` and `commission_with_mac` to allow commissioning of devices via BLE MAC addresses when QR codes are unavailable.
 - **Decision:** API Documentation Parity.
   - *Rationale:* Restructured `MatterInfo.tsx` to display full argument tables and response examples for all 27+ WebSocket commands, serving as an exhaustive live reference.
+- **Decision:** Group Management Guardrails.
+  - *Rationale:* Enforced a 16-character limit for `group_name` in `Groups.tsx` to align with Matter spec requirements, preventing server-side validation errors.
+- **Decision:** Interactive Group Debugging.
+  - *Rationale:* Integrated a `group_debug_info` view in the Groups management page to provide immediate visibility into raw device-side key state for troubleshooting multicast failures.
