@@ -73,7 +73,7 @@ export function Groups() {
     }
   };
 
-  const sendGroupCmd = async () => {
+  const sendGroupCmd = async (retryCount = 0) => {
     setLoading('group_send_command');
     setResult(null);
     try {
@@ -86,8 +86,30 @@ export function Groups() {
         payload: p,
       });
       const r = resp as { result?: unknown; error_code?: string; details?: string };
+      
       if (r.error_code) {
-        setResult({ success: false, message: r.details || r.error_code });
+        // Handle CHIP Error 0xAC (Internal Error - Missing Keys)
+        if (String(r.error_code).includes('0xAC') || String(r.details).includes('0xAC')) {
+          if (retryCount === 0) {
+            setResult({ success: false, message: 'Missing group keys. Attempting to re-initialize and retry...' });
+            await sendCommand('init_group_testing_data');
+            return sendGroupCmd(1);
+          }
+          setResult({ 
+            success: false, 
+            message: 'Error 0xAC: The controller lacks keys for this Group ID. Use 257 or 258 for standard test keys.' 
+          });
+        } 
+        // Handle CHIP Error 0x32 (Timeout)
+        else if (String(r.error_code).includes('0x32') || String(r.details).includes('0x32')) {
+          setResult({ 
+            success: false, 
+            message: 'Error 0x32: Timeout. Operational discovery failed. Ensure nodes are powered on and reachable.' 
+          });
+        }
+        else {
+          setResult({ success: false, message: r.details || r.error_code });
+        }
       } else {
         setResult({ success: true, message: 'Group command sent!' });
       }
@@ -196,6 +218,15 @@ export function Groups() {
             </div>
             
             <div className="p-6 space-y-4">
+              <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-[11px] text-amber-800">
+                <p className="font-bold mb-1 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3" />
+                  Development Tip:
+                </p>
+                Standard test keys typically support Group IDs <strong>257</strong> (0x0101) and <strong>258</strong> (0x0102). 
+                Using other IDs may cause 0xAC errors unless keys are manually configured below.
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Target Group</label>
                 <div className="flex gap-2">
@@ -253,7 +284,7 @@ export function Groups() {
               </div>
 
               <button
-                onClick={sendGroupCmd}
+                onClick={() => sendGroupCmd()}
                 disabled={status !== 'connected' || !!loading || !cmdGroupId || cmdGroupId === 'custom'}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm"
               >

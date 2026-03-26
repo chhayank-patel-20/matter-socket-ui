@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWS } from '../context/WebSocketContext';
 import type { DiscoveredDevice } from '../types/matter';
-import { Search, Radio, CheckCircle, AlertCircle, Wifi, Cpu, Tag, Settings, MousePointer2 } from 'lucide-react';
+import { Search, Radio, CheckCircle, AlertCircle, Wifi, Cpu, Tag, Settings, MousePointer2, X } from 'lucide-react';
 
 export function Commission() {
   const { status, sendCommand, onEvent } = useWS();
@@ -24,6 +24,10 @@ export function Commission() {
   const [setupLoading, setSetupLoading] = useState<string | null>(null);
   const [setupResult, setSetupResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Node Management state
+  const [nodeToolId, setNodeToolId] = useState('');
+  const [newNodeLabel, setNewNodeLabel] = useState('');
+
   useEffect(() => {
     // Listen for discovery updates
     const unbindDiscovery = onEvent('discovery_updated', (data: any) => {
@@ -45,7 +49,9 @@ export function Commission() {
     // Listen for commissioning progress
     const unbindProgress = onEvent('commissioning_progress', (data: any) => {
       if (data.stage) {
-        setCommissioningStage(data.stage);
+        let msg = data.stage;
+        if (data.node_id) msg += ` (Node ID: ${data.node_id})`;
+        setCommissioningStage(msg);
       }
     });
 
@@ -125,8 +131,14 @@ export function Commission() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      <h1 className="text-2xl font-bold text-gray-900">Commission Device</h1>
+    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Commission Device</h1>
+        <div className="flex items-center gap-2 px-3 py-1 bg-white border border-gray-200 rounded-full shadow-sm">
+          <div className={`w-2 h-2 rounded-full ${status === 'connected' ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+          <span className="text-[10px] font-bold text-gray-600 uppercase">{status}</span>
+        </div>
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -283,9 +295,10 @@ export function Commission() {
             </div>
 
             {setupResult && (
-              <div className={`flex items-start gap-2 p-2 rounded text-xs ${setupResult.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              <div className={`flex items-start gap-2 p-2 rounded text-xs border ${setupResult.success ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'}`}>
                 {setupResult.success ? <CheckCircle className="w-3 h-3 mt-0.5" /> : <AlertCircle className="w-3 h-3 mt-0.5" />}
-                {setupResult.message}
+                <div className="flex-1">{setupResult.message}</div>
+                <button onClick={() => setSetupResult(null)}><X className="w-3 h-3" /></button>
               </div>
             )}
 
@@ -358,6 +371,58 @@ export function Commission() {
                   className="w-full py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-50"
                 >
                   {setupLoading === 'set_default_fabric_label' ? 'Saving...' : 'Set Label'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Node Tools */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-semibold text-gray-800">Node Tools</h2>
+            </div>
+            <p className="text-[10px] text-gray-500 leading-relaxed italic">
+              Tools for already commissioned nodes.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">Target Node ID</label>
+                <input
+                  type="number"
+                  value={nodeToolId}
+                  onChange={e => setNodeToolId(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="e.g. 1"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <button
+                  onClick={() => handleSetup('open_commissioning_window', { node_id: parseInt(nodeToolId) })}
+                  disabled={status !== 'connected' || !!setupLoading || !nodeToolId}
+                  className="w-full py-1.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-xs font-medium hover:bg-blue-100"
+                >
+                  {setupLoading === 'open_commissioning_window' ? 'Opening...' : 'Open Commissioning Window'}
+                </button>
+              </div>
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">New Label</label>
+                <input
+                  type="text"
+                  value={newNodeLabel}
+                  onChange={e => setNewNodeLabel(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="e.g. Living Room"
+                />
+                <button
+                  onClick={() => handleSetup('update_fabric_label', { node_id: parseInt(nodeToolId), label: newNodeLabel })}
+                  disabled={status !== 'connected' || !!setupLoading || !nodeToolId || !newNodeLabel}
+                  className="w-full py-1.5 bg-gray-50 text-gray-700 border border-gray-200 rounded text-xs font-medium hover:bg-gray-100"
+                >
+                  {setupLoading === 'update_fabric_label' ? 'Updating...' : 'Update Fabric Label'}
                 </button>
               </div>
             </div>
