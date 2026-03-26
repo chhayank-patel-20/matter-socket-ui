@@ -864,7 +864,13 @@ Common attribute paths:
 
 Groups in Matter are managed entirely on the **device** — the server does not maintain a
 group registry. Group membership is stored on each endpoint via the Groups cluster and
-is queried directly from the device with `group_get_membership`.
+is queried directly from the device with `group_list` or `group_get_membership`.
+
+**Server-side state (what the server does persist):**
+- `group_keys` — one entry per group ID: the epoch key and keyset ID used to encrypt groupcast frames. Required so the controller can send multicast after a restart without re-running `group_add` on every node.
+- `node_keysets` — per-node set of keyset IDs the server has explicitly written via `KeySetWrite`. Used as a fallback source for keyset cleanup on devices that do not expose `GroupKeyManagement.Attributes.GroupKeyTable` (e.g. Tapo).
+
+Everything else (group membership, group names, keyset bindings) lives on the device.
 
 ---
 
@@ -873,8 +879,13 @@ is queried directly from the device with `group_get_membership`.
 The server:
 1. Validates the endpoint supports the Groups cluster via `Descriptor.ServerList`
 2. Generates a random 128-bit epoch key for the group (first time only) and injects it into the controller's `GroupDataProvider`
-3. Provisions the node via `GroupKeyManagement.KeySetWrite` + `GroupKeyMap`
-4. Sends `Groups.AddGroup` to the device endpoint
+3. Calls `Groups.GetGroupMembership` to check the current group table and remaining capacity
+4. If the table is **full** (`remaining_capacity == 0`) and the group is not already a member, the **oldest group is removed (FIFO)** to free a slot before proceeding
+5. Reads the device's `GroupKeyManagement.GroupKeyMap` to determine which keysets are already installed
+6. Calls `GroupKeyManagement.KeySetWrite` only if the keyset is **not** already on the device (avoids redundant writes and prevents `ResourceExhausted`)
+7. If the device keyset table is full (`ResourceExhausted`), reuses a server-managed keyset already present on the device
+8. Updates the device's `GroupKeyMap` to bind the group ID to the keyset
+9. Sends `Groups.AddGroup` to the device endpoint
 
 Call this once per endpoint/node you want to add to the group. Group membership is stored
 on the device — not on the server.
@@ -903,6 +914,14 @@ on the device — not on the server.
 
 **Errors:**
 - `InvalidArguments` — endpoint does not support the Groups cluster
+- `InvalidArguments` — group table is reported full but `GetGroupMembership` returned no existing groups (device in unexpected state)
+- `InvalidArguments` — device keyset table is full even after orphan cleanup and no server-managed keyset is already installed on the device; call `group_remove` or `group_remove_all` (which also clean up keysets) then retry
+
+> **Automatic FIFO eviction:** If `GetGroupMembership` reports `remaining_capacity == 0`, `group_add` automatically removes the oldest group on that endpoint before adding the new one. Use `group_list` first if you want to choose which group to remove manually.
+>
+> **Automatic keyset cleanup on ResourceExhausted:** If `KeySetWrite` fails with `ResourceExhausted`, the server calls `KeySetRemove` on all orphaned keysets and retries before falling back to keyset reuse. Orphaned keysets are discovered via `GroupKeyTable` if the device exposes it; otherwise the server falls back to its own `node_keysets` tracker.
+>
+> **Keyset reuse:** Devices typically support only 3 group keysets. `group_add` reuses existing keysets across multiple groups so you can manage more groups than the keyset limit.
 
 **Typical workflow:**
 ```
@@ -916,7 +935,9 @@ group_add(node_id=3, endpoint=1, group_id=100, group_name="Lights")
 
 **`group_remove`** — Remove a node endpoint from a group
 
-Sends `Groups.RemoveGroup` to the device endpoint.
+Sends `Groups.RemoveGroup` to the device, then automatically removes any keysets that are no longer referenced by any group on that node.
+
+> **Matter spec note:** `RemoveGroup` clears the group membership entry but does **not** remove the associated keyset. The server calls `KeySetRemove` on any keyset that is no longer referenced by a group binding. Orphaned keysets are discovered via `GroupKeyTable` first; if unavailable, the server falls back to its `node_keysets` tracker.
 
 ```json
 {
@@ -931,6 +952,82 @@ Sends `Groups.RemoveGroup` to the device endpoint.
 ```
 
 **Response:** `{ "message_id": "1", "result": null }`
+
+---
+
+**`group_remove_all`** — Remove all groups from a node endpoint
+
+Sends `Groups.RemoveAllGroups` to the device, then automatically removes all orphaned keysets.
+
+> **Matter spec note:** `RemoveAllGroups` clears the group table but does **not** remove keysets. The server tries to read `GroupKeyTable` to discover provisioned keysets; if the device does not expose it (e.g. Tapo), it falls back to the controller-side keyset tracker. It then calls `KeySetRemove` on every keyset no longer referenced by a group binding. After this call the node's keyset slots are fully reclaimed.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_remove_all",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1
+  }
+}
+```
+
+**Response:** `{ "message_id": "1", "result": null }`
+
+---
+
+**`group_list`** — List all groups on a node endpoint with names and remaining capacity
+
+Calls `Groups.GetGroupMembership` (for IDs and remaining capacity) then `Groups.ViewGroup` for each group to fetch its name. All data comes from the device — no server-side cache is used.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_list",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1
+  }
+}
+```
+
+| Arg | Required | Description |
+|---|---|---|
+| `node_id` | Yes | Target node |
+| `endpoint` | Yes | Target endpoint |
+
+**Response:**
+```json
+{
+  "message_id": "1",
+  "result": {
+    "node_id": 1,
+    "endpoint": 1,
+    "remaining_capacity": 2,
+    "groups": [
+      { "group_id": 100, "group_name": "Living Room Lights" },
+      { "group_id": 200, "group_name": "Kitchen" }
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `node_id` | int | Node ID echoed from request |
+| `endpoint` | int | Endpoint echoed from request |
+| `remaining_capacity` | int \| null | How many more groups can be added on this endpoint. `null` means the device did not report a capacity. |
+| `groups` | array | List of group objects currently bound to this endpoint |
+| `groups[].group_id` | int | Group ID |
+| `groups[].group_name` | str \| null | Name stored on device. `null` if `ViewGroup` failed or returned no name. |
+
+> **Typical UI workflow:**
+> ```
+> group_list(node_id=1, endpoint=1)
+> → show groups + remaining_capacity to user
+> → user picks a group to delete → group_remove(...)
+> → user adds a new group → group_add(...)
+> ```
 
 ---
 
@@ -1002,10 +1099,52 @@ the encryption keys for that group ID.
 
 ---
 
+**`group_debug_info`** — Raw group key state dump for a node
+
+Returns the device's live `GroupKeyMap`, the controller-tracked keysets for the node, and the controller's inferred list of orphaned keysets. Useful for diagnosing groupcast failures and keyset exhaustion on devices that do not expose `GroupKeyTable`.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_debug_info",
+  "args": { "node_id": 1 }
+}
+```
+
+**Response:**
+```json
+{
+  "message_id": "1",
+  "result": {
+    "node_id": 1,
+    "group_key_map": [
+      { "group_id": 100, "keyset_id": 101 },
+      { "group_id": 200, "keyset_id": 101 }
+    ],
+    "controller_tracked_keysets": [101],
+    "inferred_orphaned_keysets": [],
+    "group_key_store_entries": [
+      { "group_id": 100, "keyset_id": 101 },
+      { "group_id": 200, "keyset_id": 101 }
+    ]
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `group_key_map` | Live read of `GroupKeyManagement.GroupKeyMap` from the device |
+| `controller_tracked_keysets` | Keyset IDs the server has written to this node via `KeySetWrite` |
+| `inferred_orphaned_keysets` | `controller_tracked - referenced_by_map - {0}` — these will be removed on next cleanup |
+| `group_key_store_entries` | The server's crypto store — group→keyset mappings used for groupcast encryption |
+
+---
+
 **`group_add_key_set`** — Manually install a group key set on a node
 
-Sends `GroupKeyManagement.KeySetWrite` to the node's endpoint 0. This is called
-automatically by `group_add` — only use this for advanced/manual key management.
+Sends `GroupKeyManagement.KeySetWrite` to the node's endpoint 0.
+
+> **Advanced use only.** `group_add` handles key provisioning automatically, including skipping this call if the keyset is already on the device. Call this directly only if you need to install a specific keyset outside of the `group_add` workflow.
 
 ```json
 {
@@ -1031,8 +1170,9 @@ automatically by `group_add` — only use this for advanced/manual key managemen
 
 **`group_bind_key_set`** — Manually bind a group ID to a keyset on a node
 
-Writes to `GroupKeyManagement.GroupKeyMap` (attribute 0) on endpoint 0. This is called
-automatically by `group_add` — only use this for advanced/manual key management.
+Writes to `GroupKeyManagement.GroupKeyMap` (attribute 0) on endpoint 0.
+
+> **Advanced use only.** `group_add` updates the `GroupKeyMap` automatically after key provisioning. Call this directly only if you need to rebind a group to a different keyset outside of the `group_add` workflow.
 
 ```json
 {

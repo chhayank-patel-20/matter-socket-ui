@@ -21,6 +21,8 @@ export function Groups() {
   const [groupId, setGroupId] = useState('');
   const [groupName, setGroupName] = useState('');
   const [memberships, setMemberships] = useState<number[]>([]);
+  const [nodeGroupDetails, setNodeGroupDetails] = useState<{group_id: number, group_name: string | null}[]>([]);
+  const [remainingCapacity, setRemainingCapacity] = useState<number | null>(null);
 
   // Group Command State
   const [cmdGroupId, setCmdGroupId] = useState('');
@@ -72,12 +74,28 @@ export function Groups() {
     setResult(null);
     try {
       const resp = await sendCommand(command, args);
-      const r = resp as { result?: unknown; error_code?: string; details?: string };
+      const r = resp as { result?: any; error_code?: string; details?: string };
       if (r.error_code) {
         setResult({ success: false, message: r.details || r.error_code });
       } else {
         setResult({ success: true, message: `Success: ${JSON.stringify(r.result)}` });
-        if (command === 'group_get_membership') setMemberships(r.result as number[]);
+        
+        if (command === 'group_get_membership') {
+          setMemberships(r.result as number[]);
+        }
+        
+        if (command === 'group_list') {
+          const res = r.result as { groups: {group_id: number, group_name: string | null}[], remaining_capacity: number | null };
+          setNodeGroupDetails(res.groups || []);
+          setRemainingCapacity(res.remaining_capacity);
+          setMemberships((res.groups || []).map(g => g.group_id));
+        }
+
+        if (command === 'group_remove_all') {
+          setNodeGroupDetails([]);
+          setRemainingCapacity(null);
+          setMemberships([]);
+        }
         
         // If adding a group to a node, also ensure it's in our local registry if a name was provided
         if (command === 'group_add' && args.group_id && args.group_name) {
@@ -392,6 +410,12 @@ export function Groups() {
                 </div>
               </div>
 
+              <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-3 text-[10px] text-blue-800 leading-relaxed italic">
+                <strong>Smart Provisioning:</strong> <code>Join Group</code> automatically handles encryption keys and 
+                group slots. If the device's group table is full, the **oldest group is automatically removed (FIFO)**
+                to free a slot. Keyset reuse is handled transparently.
+              </div>
+
               <div className="flex gap-2">
                 <button
                   onClick={() => handleAction('group_add', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId), group_id: parseInt(groupId), group_name: groupName })}
@@ -409,42 +433,77 @@ export function Groups() {
                 </button>
               </div>
 
-              <button
-                onClick={() => handleAction('group_get_membership', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId) })}
-                disabled={status !== 'connected' || !!loading || !nodeId}
-                className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 cursor-pointer"
-              >
-                Refresh Memberships
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleAction('group_list', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId) })}
+                  disabled={status !== 'connected' || !!loading || !nodeId}
+                  className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 cursor-pointer"
+                >
+                  Refresh Memberships
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm('Nuclear Option: Are you sure you want to remove ALL groups from this endpoint?')) {
+                      handleAction('group_remove_all', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId) });
+                    }
+                  }}
+                  disabled={status !== 'connected' || !!loading || !nodeId}
+                  className="px-4 py-2 bg-red-50 text-red-700 border border-red-100 rounded-lg text-xs font-semibold hover:bg-red-100 cursor-pointer"
+                >
+                  Remove All
+                </button>
+              </div>
 
-              {memberships.length > 0 && (
+              {remainingCapacity !== null && (
+                <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50 border border-gray-100 rounded-lg">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Remaining Capacity</span>
+                  <span className={`text-xs font-mono font-bold ${remainingCapacity === 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {remainingCapacity} slots
+                  </span>
+                </div>
+              )}
+
+              {(memberships.length > 0 || nodeGroupDetails.length > 0) && (
                 <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100/50">
-                  <p className="text-[10px] font-bold text-blue-800 uppercase mb-2">Node {nodeId} Active Groups</p>
+                  <p className="text-[10px] font-bold text-blue-800 uppercase mb-2 flex justify-between items-center">
+                    <span>Node {nodeId} Active Groups</span>
+                    <span className="text-blue-400 font-normal">Stored on device</span>
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {memberships.map(m => (
-                      <span key={m} className="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-mono font-bold text-blue-700">
-                        {m} ({registeredGroups.find(g => g.group_id === m)?.group_name || '??'})
-                      </span>
-                    ))}
+                    {nodeGroupDetails.length > 0 ? (
+                      nodeGroupDetails.map(g => (
+                        <span key={g.group_id} className="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-mono font-bold text-blue-700">
+                          {g.group_id} ({g.group_name || registeredGroups.find(rg => rg.group_id === g.group_id)?.group_name || '??'})
+                        </span>
+                      ))
+                    ) : (
+                      memberships.map(m => (
+                        <span key={m} className="px-2 py-1 bg-white border border-blue-200 rounded text-[10px] font-mono font-bold text-blue-700">
+                          {m} ({registeredGroups.find(g => g.group_id === m)?.group_name || '??'})
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Advanced Group Keys Card */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          {/* Advanced / Manual Key Management Card */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden border-orange-100">
+            <div className="px-6 py-4 border-b border-orange-100 bg-orange-50/30">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-indigo-600" />
-                <h2 className="font-semibold text-gray-800 text-sm">Real Device Config</h2>
+                <ShieldCheck className="w-5 h-5 text-orange-600" />
+                <h2 className="font-semibold text-gray-800 text-sm uppercase tracking-tight">Advanced / Manual Key Management</h2>
               </div>
             </div>
             
             <div className="p-6 space-y-4">
-              <p className="text-[10px] text-gray-500 leading-relaxed italic">
-                Required for real devices (e.g. TP-Link) to secure group communication.
-              </p>
+              <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 text-[10px] text-orange-800 leading-relaxed">
+                <strong>Warning:</strong> These tools are for advanced use only. 
+                <code>Join Group</code> already handles these steps automatically for standard cases.
+                Use these only if you need to manually override keys or bindings.
+              </div>
 
               <div className="space-y-3">
                 <div className="grid grid-cols-4 gap-2">
@@ -470,9 +529,9 @@ export function Groups() {
                 <button
                   onClick={() => handleAction('group_add_key_set', { node_id: parseInt(nodeId), keyset_id: parseInt(keysetId), key_hex: keyHex })}
                   disabled={status !== 'connected' || !!loading || !nodeId}
-                  className="w-full py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 cursor-pointer"
+                  className="w-full py-1.5 bg-orange-600 text-white rounded text-xs font-medium hover:bg-orange-700 cursor-pointer"
                 >
-                  Add Key Set
+                  Force Add Key Set
                 </button>
               </div>
 
@@ -501,9 +560,9 @@ export function Groups() {
                 <button
                   onClick={() => handleAction('group_bind_key_set', { node_id: parseInt(nodeId), group_id: parseInt(bindGroupId), keyset_id: parseInt(bindKeysetId) })}
                   disabled={status !== 'connected' || !!loading || !nodeId || !bindGroupId}
-                  className="w-full py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-xs font-medium hover:bg-indigo-100 cursor-pointer"
+                  className="w-full py-1.5 bg-orange-50 text-orange-700 border border-orange-100 rounded text-xs font-medium hover:bg-orange-100 cursor-pointer"
                 >
-                  Bind Key Set
+                  Force Bind Key Set
                 </button>
               </div>
             </div>

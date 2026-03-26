@@ -134,7 +134,7 @@ const WS_COMMANDS = [
   },
   {
     cmd: 'group_add',
-    desc: 'Add a node endpoint to a group (stored on device).',
+    desc: 'Add node to group. Uses smart provisioning: automatically manages keysets and reuses slots. If device table is full, automatically removes oldest group (FIFO).',
     args: [
       { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
       { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' },
@@ -154,6 +154,24 @@ const WS_COMMANDS = [
     response: null
   },
   {
+    cmd: 'group_list',
+    desc: 'List all groups on an endpoint with names and remaining capacity (fetched from device).',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' }
+    ],
+    response: { node_id: 1, endpoint: 1, remaining_capacity: 2, groups: [{ group_id: 100, group_name: "Test" }] }
+  },
+  {
+    cmd: 'group_remove_all',
+    desc: 'NUCLEAR OPTION: Remove all group memberships from a node endpoint.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' }
+    ],
+    response: null
+  },
+  {
     cmd: 'group_get_membership',
     desc: 'Query which groups an endpoint belongs to (live data).',
     args: [
@@ -161,6 +179,26 @@ const WS_COMMANDS = [
       { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' }
     ],
     response: [100, 200]
+  },
+  {
+    cmd: 'group_add_key_set',
+    desc: 'ADVANCED: Manually install a group key set. (group_add handles this automatically).',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'keyset_id', type: 'int', req: true, def: '', desc: 'Keyset ID' },
+      { name: 'key_hex', type: 'str', req: false, def: '0102...0f10', desc: '16-byte hex key' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'group_bind_key_set',
+    desc: 'ADVANCED: Manually bind group to keyset. (group_add handles this automatically).',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'group_id', type: 'int', req: true, def: '', desc: 'Group ID' },
+      { name: 'keyset_id', type: 'int', req: true, def: '', desc: 'Keyset ID' }
+    ],
+    response: null
   }
 ];
 
