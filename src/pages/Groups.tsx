@@ -3,12 +3,14 @@ import { useWS } from '../context/WebSocketContext';
 import { Users, Plus, Trash2, Send, Database, CheckCircle, AlertCircle, List, ShieldCheck, X } from 'lucide-react';
 import type { Group } from '../types/matter';
 
+const LOCAL_STORAGE_KEY = 'matter_ui_group_registry';
+
 export function Groups() {
   const { status, sendCommand, nodes } = useWS();
   const [loading, setLoading] = useState<string | null>(null);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Registry Management State
+  // Client-side Registry Management State (Replacing server-side registry)
   const [registeredGroups, setRegisteredGroups] = useState<Group[]>([]);
   const [regGroupId, setRegGroupId] = useState('');
   const [regGroupName, setRegGroupName] = useState('');
@@ -32,21 +34,37 @@ export function Groups() {
   const [bindGroupId, setBindGroupId] = useState('');
   const [bindKeysetId, setBindKeysetId] = useState('1');
 
+  // Load groups from localStorage on mount
   useEffect(() => {
-    if (status === 'connected') {
-      fetchGroups();
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      try {
+        setRegisteredGroups(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load local group registry:', e);
+      }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, []);
 
-  const fetchGroups = async () => {
-    try {
-      const resp = await sendCommand('get_groups');
-      const r = resp as { result?: Group[] };
-      if (Array.isArray(r.result)) setRegisteredGroups(r.result);
-    } catch (e) {
-      console.error('Failed to fetch groups:', e);
-    }
+  // Save groups to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(registeredGroups));
+  }, [registeredGroups]);
+
+  const addLocalGroup = () => {
+    const gid = parseInt(regGroupId);
+    if (isNaN(gid)) return;
+    
+    setRegisteredGroups(prev => {
+      const filtered = prev.filter(g => g.group_id !== gid);
+      return [...filtered, { group_id: gid, group_name: regGroupName }].sort((a, b) => a.group_id - b.group_id);
+    });
+    setRegGroupId('');
+    setRegGroupName('');
+  };
+
+  const removeLocalGroup = (gid: number) => {
+    setRegisteredGroups(prev => prev.filter(g => g.group_id !== gid));
   };
 
   const handleAction = async (command: string, args: Record<string, unknown>) => {
@@ -61,9 +79,14 @@ export function Groups() {
         setResult({ success: true, message: `Success: ${JSON.stringify(r.result)}` });
         if (command === 'group_get_membership') setMemberships(r.result as number[]);
         
-        // Refresh registry if modified
-        if (['add_group', 'remove_group', 'group_add'].includes(command)) {
-          fetchGroups();
+        // If adding a group to a node, also ensure it's in our local registry if a name was provided
+        if (command === 'group_add' && args.group_id && args.group_name) {
+          const gid = args.group_id as number;
+          const gname = args.group_name as string;
+          setRegisteredGroups(prev => {
+            if (prev.some(g => g.group_id === gid)) return prev;
+            return [...prev, { group_id: gid, group_name: gname }].sort((a, b) => a.group_id - b.group_id);
+          });
         }
       }
     } catch (e) {
@@ -137,12 +160,18 @@ export function Groups() {
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <List className="w-5 h-5 text-purple-600" />
-                <h2 className="font-semibold text-gray-800">Global Group Registry</h2>
+                <h2 className="font-semibold text-gray-800">Local Group Registry</h2>
               </div>
               <span className="text-xs text-gray-400 font-medium">{registeredGroups.length} groups</span>
             </div>
             
             <div className="p-6 space-y-4">
+              <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 text-[11px] text-purple-800 leading-relaxed">
+                <strong>Note:</strong> Matter manages groups on the <strong>devices</strong>. The server does not
+                maintain a registry. This list is stored <strong>locally in your browser</strong> to help you
+                remember your Group IDs and names.
+              </div>
+
               <div className="grid grid-cols-12 gap-3 items-end">
                 <div className="col-span-3">
                   <label className="block text-[10px] text-gray-400 uppercase font-bold mb-1">ID</label>
@@ -166,11 +195,11 @@ export function Groups() {
                 </div>
                 <div className="col-span-3">
                   <button
-                    onClick={() => handleAction('add_group', { group_id: parseInt(regGroupId), group_name: regGroupName })}
-                    disabled={status !== 'connected' || !!loading || !regGroupId || !regGroupName}
-                    className="w-full py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm"
+                    onClick={addLocalGroup}
+                    disabled={!regGroupId || !regGroupName}
+                    className="w-full py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
                   >
-                    Add
+                    Save
                   </button>
                 </div>
               </div>
@@ -188,14 +217,14 @@ export function Groups() {
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => { setRegGroupId(String(g.group_id)); setRegGroupName(g.group_name); }}
-                          className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded"
+                          className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded cursor-pointer"
                           title="Edit"
                         >
                           <Plus className="w-4 h-4 rotate-45" />
                         </button>
                         <button
-                          onClick={() => handleAction('remove_group', { group_id: g.group_id })}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          onClick={() => removeLocalGroup(g.group_id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -225,6 +254,10 @@ export function Groups() {
                 </p>
                 Standard test keys typically support Group IDs <strong>257</strong> (0x0101) and <strong>258</strong> (0x0102). 
                 Using other IDs may cause 0xAC errors unless keys are manually configured below.
+              </div>
+
+              <div className="bg-green-50 border border-green-100 rounded-lg p-3 text-[11px] text-green-800 leading-relaxed italic">
+                Multicast is <strong>fire-and-forget</strong>. Devices do not send acknowledgments back to the controller.
               </div>
 
               <div>
@@ -286,7 +319,7 @@ export function Groups() {
               <button
                 onClick={() => sendGroupCmd()}
                 disabled={status !== 'connected' || !!loading || !cmdGroupId || cmdGroupId === 'custom'}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
               >
                 <Send className="w-4 h-4" /> 
                 {loading === 'group_send_command' ? 'Sending...' : 'Send Multicast Command'}
@@ -353,7 +386,7 @@ export function Groups() {
                     type="text"
                     value={groupName}
                     onChange={e => setGroupName(e.target.value)}
-                    placeholder="Auto-registers if new"
+                    placeholder="Saved to device"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                 </div>
@@ -363,14 +396,14 @@ export function Groups() {
                 <button
                   onClick={() => handleAction('group_add', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId), group_id: parseInt(groupId), group_name: groupName })}
                   disabled={status !== 'connected' || !!loading || !nodeId || !groupId}
-                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
                 >
                   Join Group
                 </button>
                 <button
                   onClick={() => handleAction('group_remove', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId), group_id: parseInt(groupId) })}
                   disabled={status !== 'connected' || !!loading || !nodeId || !groupId}
-                  className="px-4 py-2 bg-red-50 text-red-700 border border-red-100 rounded-lg text-xs font-semibold hover:bg-red-100"
+                  className="px-4 py-2 bg-red-50 text-red-700 border border-red-100 rounded-lg text-xs font-semibold hover:bg-red-100 cursor-pointer"
                 >
                   Leave
                 </button>
@@ -379,7 +412,7 @@ export function Groups() {
               <button
                 onClick={() => handleAction('group_get_membership', { node_id: parseInt(nodeId), endpoint: parseInt(endpointId) })}
                 disabled={status !== 'connected' || !!loading || !nodeId}
-                className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200"
+                className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 cursor-pointer"
               >
                 Refresh Memberships
               </button>
@@ -437,7 +470,7 @@ export function Groups() {
                 <button
                   onClick={() => handleAction('group_add_key_set', { node_id: parseInt(nodeId), keyset_id: parseInt(keysetId), key_hex: keyHex })}
                   disabled={status !== 'connected' || !!loading || !nodeId}
-                  className="w-full py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700"
+                  className="w-full py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 cursor-pointer"
                 >
                   Add Key Set
                 </button>
@@ -468,7 +501,7 @@ export function Groups() {
                 <button
                   onClick={() => handleAction('group_bind_key_set', { node_id: parseInt(nodeId), group_id: parseInt(bindGroupId), keyset_id: parseInt(bindKeysetId) })}
                   disabled={status !== 'connected' || !!loading || !nodeId || !bindGroupId}
-                  className="w-full py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-xs font-medium hover:bg-indigo-100"
+                  className="w-full py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded text-xs font-medium hover:bg-indigo-100 cursor-pointer"
                 >
                   Bind Key Set
                 </button>
@@ -485,7 +518,7 @@ export function Groups() {
             <button
               onClick={() => handleAction('init_group_testing_data', {})}
               disabled={status !== 'connected' || !!loading}
-              className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-700 rounded text-[10px] font-bold hover:bg-orange-100 disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-700 rounded text-[10px] font-bold hover:bg-orange-100 disabled:opacity-50 cursor-pointer"
             >
               <Database className="w-3 h-3" /> Re-init Test Data
             </button>
@@ -504,7 +537,7 @@ export function Groups() {
             </div>
             <button 
               onClick={() => setResult(null)}
-              className="p-1 hover:bg-black/5 rounded transition-colors"
+              className="p-1 hover:bg-black/5 rounded transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -529,4 +562,3 @@ function StatusIndicator({ status }: { status: string }) {
     </div>
   );
 }
-

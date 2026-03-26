@@ -32,33 +32,136 @@ const COMMANDS = [
 ];
 
 const WS_COMMANDS = [
-  { cmd: 'get_nodes', desc: 'Get all commissioned nodes', args: '(none)' },
-  { cmd: 'get_node', desc: 'Get info for a specific node', args: '{ node_id }' },
-  { cmd: 'start_listening', desc: 'Start receiving live events', args: '(none)' },
-  { cmd: 'discover_commissionable_nodes', desc: 'Discover new devices', args: '(none)' },
-  { cmd: 'commission_with_code', desc: 'Commission using code/QR', args: '{ code }' },
-  { cmd: 'commission_on_network', desc: 'Commission device on network', args: '{ setup_pin_code, filter_type, filter }' },
-  { cmd: 'open_commissioning_window', desc: 'Open window for node to pair with another', args: '{ node_id }' },
-  { cmd: 'update_fabric_label', desc: 'Update node label', args: '{ node_id, label }' },
-  { cmd: 'get_fabrics', desc: 'Get all fabrics on a node', args: '{ node_id }' },
-  { cmd: 'remove_fabric', desc: 'Remove fabric from a node', args: '{ node_id, fabric_index }' },
-  { cmd: 'remove_node', desc: 'Remove node from fabric', args: '{ node_id }' },
-  { cmd: 'ping_node', desc: 'Ping node on current IP', args: '{ node_id, attempts }' },
-  { cmd: 'get_node_ip_addresses', desc: 'Get known IPs for a node', args: '{ node_id, prefer_cache, scoped }' },
-  { cmd: 'interview_node', desc: 'Force node interview', args: '{ node_id }' },
-  { cmd: 'read_attribute', desc: 'Read attribute value', args: '{ node_id, attribute_path }' },
-  { cmd: 'write_attribute', desc: 'Write attribute value', args: '{ node_id, attribute_path, value }' },
-  { cmd: 'device_command', desc: 'Send cluster command', args: '{ node_id, endpoint_id, cluster_id, command_name, payload }' },
-  { cmd: 'group_send_command', desc: 'Send command to a group', args: '{ group_id, cluster_id, command_name, payload }' },
-  { cmd: 'get_groups', desc: 'Get all registry groups', args: '(none)' },
-  { cmd: 'add_group', desc: 'Add/update group registry', args: '{ group_id, group_name }' },
-  { cmd: 'remove_group', desc: 'Remove group from registry', args: '{ group_id }' },
-  { cmd: 'group_add_key_set', desc: 'Add key set to a node', args: '{ node_id, keyset_id, key_hex }' },
-  { cmd: 'group_bind_key_set', desc: 'Bind group to keyset', args: '{ node_id, group_id, keyset_id }' },
-  { cmd: 'set_wifi_credentials', desc: 'Set credentials for WiFi commissioning', args: '{ ssid, credentials }' },
-  { cmd: 'set_thread_dataset', desc: 'Set dataset for Thread commissioning', args: '{ dataset }' },
-  { cmd: 'set_default_fabric_label', desc: 'Set label applied at commissioning', args: '{ label }' },
-  { cmd: 'init_group_testing_data', desc: 'Reset/Init group test keys', args: '(none)' },
+  {
+    cmd: 'server_info',
+    desc: 'Get server version and fabric status.',
+    args: [],
+    response: {
+      fabric_id: 1,
+      compressed_fabric_id: 3735928559,
+      schema_version: 6,
+      sdk_version: "1.0.0",
+      wifi_credentials_set: true,
+      bluetooth_enabled: true
+    }
+  },
+  {
+    cmd: 'scan_ble_devices',
+    desc: 'Scan for nearby BLE devices (Matter and non-Matter).',
+    args: [
+      { name: 'mac_address', type: 'str', req: false, def: '', desc: 'Filter by MAC' },
+      { name: 'timeout', type: 'float', req: false, def: '10.0', desc: 'Scan duration' }
+    ],
+    response: [
+      {
+        address: "50:3D:D1:C0:5B:AB",
+        name: "Matter Device",
+        rssi: -65,
+        is_matter: true,
+        matter_discriminator: 3840
+      }
+    ]
+  },
+  {
+    cmd: 'commission_with_code',
+    desc: 'Commission a device using a QR or manual pairing code.',
+    args: [
+      { name: 'code', type: 'str', req: true, def: '', desc: 'QR (MT:...) or 11-digit code' },
+      { name: 'fabric_label', type: 'str', req: false, def: '', desc: 'Optional label for the fabric' }
+    ],
+    response: { node_id: 5, available: true, attributes: { "...": "..." } }
+  },
+  {
+    cmd: 'commission_with_mac',
+    desc: 'Commission a device by BLE MAC address and PIN code.',
+    args: [
+      { name: 'mac_address', type: 'str', req: true, def: '', desc: 'BLE MAC address' },
+      { name: 'setup_pin_code', type: 'int', req: true, def: '', desc: '8-digit PIN' },
+      { name: 'scan_timeout', type: 'float', req: false, def: '10.0', desc: 'BLE scan duration' }
+    ],
+    response: { node_id: 6, available: true, attributes: { "...": "..." } }
+  },
+  {
+    cmd: 'commission_on_network',
+    desc: 'Commission a device already present on the network.',
+    args: [
+      { name: 'setup_pin_code', type: 'int', req: true, def: '', desc: '8-digit PIN' },
+      { name: 'filter_type', type: 'int', req: false, def: '0', desc: '0=None, 2=Long Discriminator' },
+      { name: 'filter', type: 'any', req: false, def: '', desc: 'Filter value matching type' }
+    ],
+    response: { node_id: 7, available: true }
+  },
+  {
+    cmd: 'open_commissioning_window',
+    desc: 'Open window for multi-fabric commissioning.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'timeout', type: 'int', req: false, def: '300', desc: 'Seconds to stay open' }
+    ],
+    response: { setup_pin_code: 12345678, setup_qr_code: "MT:...", discriminator: 3840 }
+  },
+  {
+    cmd: 'device_command',
+    desc: 'Send a cluster command to a node endpoint.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'endpoint_id', type: 'int', req: true, def: '', desc: 'Endpoint' },
+      { name: 'cluster_id', type: 'int', req: true, def: '', desc: 'Cluster (e.g. 6)' },
+      { name: 'command_name', type: 'str', req: true, def: '', desc: 'Name (e.g. "On")' },
+      { name: 'payload', type: 'obj', req: true, def: '', desc: 'Arguments (use {} for none)' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'read_attribute',
+    desc: 'Read an attribute value (Endpoint/Cluster/Attr).',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'attribute_path', type: 'str', req: true, def: '', desc: 'Format: "1/6/0"' }
+    ],
+    response: true
+  },
+  {
+    cmd: 'group_send_command',
+    desc: 'Send multicast command to a group ID.',
+    args: [
+      { name: 'group_id', type: 'int', req: true, def: '', desc: 'Target group (1-65527)' },
+      { name: 'cluster_id', type: 'int', req: true, def: '', desc: 'Cluster' },
+      { name: 'command_name', type: 'str', req: true, def: '', desc: 'Name' },
+      { name: 'payload', type: 'obj', req: true, def: '', desc: 'Arguments' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'group_add',
+    desc: 'Add a node endpoint to a group (stored on device).',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' },
+      { name: 'group_id', type: 'int', req: true, def: '', desc: 'Group ID' },
+      { name: 'group_name', type: 'str', req: true, def: '', desc: 'Name (max 16 chars)' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'group_remove',
+    desc: 'Remove a node endpoint from a group.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' },
+      { name: 'group_id', type: 'int', req: true, def: '', desc: 'Group ID' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'group_get_membership',
+    desc: 'Query which groups an endpoint belongs to (live data).',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'endpoint', type: 'int', req: true, def: '', desc: 'Endpoint' }
+    ],
+    response: [100, 200]
+  }
 ];
 
 export function MatterInfo() {
@@ -248,36 +351,103 @@ export function MatterInfo() {
       </section>
 
       {/* WebSocket API */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-gray-800">WebSocket API (python-matter-server)</h2>
-        <p className="text-sm text-gray-600">Default endpoint: <code className="bg-gray-100 px-1 rounded font-mono">ws://localhost:5580/ws</code></p>
-        <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs text-gray-700 space-y-0.5">
-          <p className="text-gray-400">// Request format</p>
-          <p>{'{'}</p>
-          <p className="ml-4">"message_id": "1",</p>
-          <p className="ml-4">"command": "command_name",</p>
-          <p className="ml-4">"args": {'{ ... }'}</p>
-          <p>{'}'}</p>
+      <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+          <h2 className="text-lg font-semibold text-gray-800">WebSocket API Reference</h2>
+          <p className="text-xs text-gray-500 mt-1">Full specification for python-matter-server communication</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-500 border-b border-gray-200">
-                <th className="pb-2 pr-4 font-medium">Command</th>
-                <th className="pb-2 pr-4 font-medium">Description</th>
-                <th className="pb-2 font-medium">Args</th>
-              </tr>
-            </thead>
-            <tbody>
-              {WS_COMMANDS.map(c => (
-                <tr key={c.cmd} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-2 pr-4 font-mono text-xs text-blue-600">{c.cmd}</td>
-                  <td className="py-2 pr-4 text-gray-700 text-xs">{c.desc}</td>
-                  <td className="py-2 font-mono text-xs text-gray-500">{c.args}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        <div className="divide-y divide-gray-100">
+          {WS_COMMANDS.map(c => (
+            <div key={c.cmd} className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <code className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded text-sm">
+                  {c.cmd}
+                </code>
+                <span className="text-xs text-gray-400 italic">{c.desc}</span>
+              </div>
+
+              {c.args.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Arguments</p>
+                  <div className="overflow-x-auto border border-gray-100 rounded-lg">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Name</th>
+                          <th className="px-3 py-2 font-semibold">Type</th>
+                          <th className="px-3 py-2 font-semibold">Req.</th>
+                          <th className="px-3 py-2 font-semibold">Default</th>
+                          <th className="px-3 py-2 font-semibold">Description</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {c.args.map(arg => (
+                          <tr key={arg.name}>
+                            <td className="px-3 py-2 font-mono font-bold text-gray-700">{arg.name}</td>
+                            <td className="px-3 py-2 text-gray-500">{arg.type}</td>
+                            <td className="px-3 py-2">
+                              {arg.req ? (
+                                <span className="text-red-500 font-bold">Yes</span>
+                              ) : (
+                                <span className="text-gray-400">No</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-gray-400 font-mono">{arg.def || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600">{arg.desc}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Request Shape</p>
+                  <pre className="bg-gray-900 text-gray-300 p-3 rounded-lg text-[10px] font-mono leading-relaxed">
+                    {JSON.stringify({
+                      message_id: "123",
+                      command: c.cmd,
+                      args: c.args.reduce((acc, a) => ({ ...acc, [a.name]: a.type }), {})
+                    }, null, 2)}
+                  </pre>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Example Response</p>
+                  <pre className="bg-gray-800 text-green-400 p-3 rounded-lg text-[10px] font-mono leading-relaxed border border-gray-700">
+                    {JSON.stringify({
+                      message_id: "123",
+                      result: c.response
+                    }, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Common Paths Reference */}
+      <section className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-gray-800">Common Attribute Paths</h2>
+        <p className="text-sm text-gray-600">Use these with <code className="bg-gray-100 px-1 rounded">read_attribute</code> or <code className="bg-gray-100 px-1 rounded">write_attribute</code>.</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[
+            { path: '1/6/0', label: 'OnOff State', desc: 'Boolean: true = On, false = Off' },
+            { path: '1/8/0', label: 'Current Level', desc: '0-254 brightness level' },
+            { path: '1/768/7', label: 'Color Temp', desc: 'Mireds: 153 (6500K) to 500 (2000K)' },
+            { path: '0/40/3', label: 'Vendor Name', desc: 'Basic device information' },
+            { path: '0/40/4', label: 'Product ID', desc: 'Basic device information' },
+            { path: '0/40/5', label: 'Node Label', desc: 'Human-readable name stored on node' },
+          ].map(p => (
+            <div key={p.path} className="p-3 border border-gray-100 rounded-lg bg-gray-50/30">
+              <code className="text-xs font-bold text-blue-700 block mb-1">{p.path}</code>
+              <p className="text-xs font-semibold text-gray-800">{p.label}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">{p.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
     </div>

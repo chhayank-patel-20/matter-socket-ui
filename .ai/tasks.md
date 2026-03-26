@@ -10,9 +10,13 @@
 - [x] Navigation and Sidebar updates for new routes.
 - [x] Fixed build errors related to TypeScript types and missing props.
 - [x] Verified project compilation with `npm run build`.
+- [x] Phase 6: Comprehensive API documentation alignment (`MatterInfo.tsx` redesign).
+- [x] Phase 7: BLE Scanning and MAC-based commissioning support.
+- [x] Phase 8: Group UI/UX overhaul and local registry migration.
+- [x] Enhanced error handling for CHIP 0xAC and 0x32 errors with automatic retries.
 
 ## Ongoing
-- [ ] No active tasks; initial implementation completed.
+- [ ] No active tasks; implementation aligned with latest `docs/API.md`.
 
 ## Future
 - [ ] Implement attribute subscription UI for live updates without manual refresh.

@@ -36,7 +36,7 @@ const DEFAULT_COMMANDS_STATE: CommandsState = {
 };
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
-  const [wsUrl, setWsUrl] = useState('ws://192.168.1.185:5580/ws');
+  const [wsUrl, setWsUrl] = useState('ws://10.81.3.38:5580/ws');
   const [nodes, setNodes] = useState<MatterNode[]>([]);
   const [commandsState, setCommandsState] = useState<CommandsState>(DEFAULT_COMMANDS_STATE);
   const ws = useWebSocket();

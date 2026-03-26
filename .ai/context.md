@@ -13,4 +13,4 @@ A React-based web interface for the Python Matter Server, communicating via WebS
 - `WebSocketContext.tsx`: Manages the global connection state, logs, and command dispatching.
 - `useWebSocket.ts`: Core logic for message ID tracking, request-response mapping, and event handling.
 - `Devices.tsx`: Central hub for node-specific management (Attributes, Bindings, ACLs, OTA).
-- `Groups.tsx`: Dedicated management for multicast groups.
+- `Groups.tsx`: Dedicated management for multicast groups and memberships. Uses a client-side (localStorage) registry for Group names.

@@ -30,10 +30,30 @@ export interface DiscoveredDevice {
   pairing_instruction?: string;
   pairing_hint?: number;
   addresses?: string[];
+  // BLE specific fields
+  address?: string;
+  rssi?: number;
+  is_matter?: boolean;
+  matter_discriminator?: number | null;
+  matter_vendor_id?: number | null;
+  matter_product_id?: number | null;
   // Legacy fields for backward compatibility
   name?: string;
   discriminator?: number;
   ip_address?: string;
+}
+
+export interface BleDevice {
+  address: string;
+  name: string;
+  rssi: number;
+  service_uuids: string[];
+  service_data: Record<string, string>;
+  manufacturer_data: Record<string, string>;
+  is_matter: boolean;
+  matter_discriminator: number | null;
+  matter_vendor_id: number | null;
+  matter_product_id: number | null;
 }
 
 export interface Group {

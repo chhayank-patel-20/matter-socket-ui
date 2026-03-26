@@ -7,10 +7,12 @@ export function Commission() {
   const { status, sendCommand, onEvent } = useWS();
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<DiscoveredDevice[]>([]);
-  const [commissionMode, setCommissionMode] = useState<'code' | 'network'>('code');
+  const [commissionMode, setCommissionMode] = useState<'code' | 'network' | 'mac'>('code');
   const [code, setCode] = useState('');
   const [pinCode, setPinCode] = useState('');
   const [discriminator, setDiscriminator] = useState('');
+  const [macAddress, setMacAddress] = useState('');
+  const [scanTimeout, setScanTimeout] = useState('30');
   const [commissioning, setCommissioning] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [discoverError, setDiscoverError] = useState('');
@@ -32,10 +34,11 @@ export function Commission() {
     // Listen for discovery updates
     const unbindDiscovery = onEvent('discovery_updated', (data: any) => {
       if (data.removed) {
-        setDiscovered(prev => prev.filter(d => (d.instance_name || d.name) !== data.name));
+        setDiscovered(prev => prev.filter(d => (d.instance_name || d.name || d.address) !== (data.instance_name || data.name || data.address)));
       } else {
         setDiscovered(prev => {
-          const index = prev.findIndex(d => (d.instance_name || d.name) === (data.instance_name || data.name));
+          const id = data.instance_name || data.name || data.address;
+          const index = prev.findIndex(d => (d.instance_name || d.name || d.address) === id);
           if (index >= 0) {
             const next = [...prev];
             next[index] = data;
@@ -76,9 +79,41 @@ export function Commission() {
     }
   };
 
+  const scanBle = async () => {
+    setDiscovering(true);
+    setDiscoverError('');
+    try {
+      const resp = await sendCommand('scan_ble_devices', { timeout: parseFloat(scanTimeout) });
+      const r = (resp as { result?: DiscoveredDevice[] }).result;
+      if (Array.isArray(r)) {
+        // Merge with existing discovered list
+        setDiscovered(prev => {
+          const next = [...prev];
+          r.forEach(device => {
+            const id = device.address;
+            const index = next.findIndex(d => d.address === id);
+            if (index >= 0) next[index] = device;
+            else next.push(device);
+          });
+          return next;
+        });
+      }
+    } catch (e) {
+      setDiscoverError(String(e));
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
   const selectDevice = (device: DiscoveredDevice) => {
-    setCommissionMode('network');
-    setDiscriminator(String(device.long_discriminator ?? device.discriminator ?? ''));
+    if (device.address) {
+      setCommissionMode('mac');
+      setMacAddress(device.address);
+      setPinCode('');
+    } else {
+      setCommissionMode('network');
+      setDiscriminator(String(device.long_discriminator ?? device.discriminator ?? ''));
+    }
     // Scroll to commission form
     window.scrollTo({ top: document.getElementById('commission-form')?.offsetTop ? document.getElementById('commission-form')!.offsetTop - 20 : 0, behavior: 'smooth' });
   };
@@ -90,19 +125,30 @@ export function Commission() {
     try {
       let resp;
       if (commissionMode === 'code') {
-        resp = await sendCommand('commission_with_code', { code });
+        resp = await sendCommand('commission_with_code', { 
+          code,
+          fabric_label: fabricLabel || undefined
+        });
+      } else if (commissionMode === 'mac') {
+        resp = await sendCommand('commission_with_mac', {
+          mac_address: macAddress,
+          setup_pin_code: parseInt(pinCode),
+          scan_timeout: parseFloat(scanTimeout)
+        });
       } else {
         resp = await sendCommand('commission_on_network', {
           setup_pin_code: parseInt(pinCode),
-          filter_type: discriminator ? 5 : 0, // 5 = Long Discriminator
+          filter_type: discriminator ? 2 : 0, // 2 = LONG_DISCRIMINATOR
           filter: discriminator ? parseInt(discriminator) : null,
+          fabric_label: fabricLabel || undefined
         });
       }
-      const r = resp as { result?: unknown; error_code?: string; details?: string };
+      const r = resp as { result?: any; error_code?: string; details?: string };
       if (r.error_code) {
         setResult({ success: false, message: r.details || r.error_code });
       } else {
-        setResult({ success: true, message: `Device commissioned successfully! Node ID: ${r.result}` });
+        const nodeId = typeof r.result === 'object' ? r.result.node_id : r.result;
+        setResult({ success: true, message: `Device commissioned successfully! Node ID: ${nodeId}` });
       }
     } catch (e) {
       setResult({ success: false, message: String(e) });
@@ -147,17 +193,43 @@ export function Commission() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-gray-800">Discover Devices</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Scan for devices available for commissioning</p>
+                <p className="text-xs text-gray-500 mt-0.5">Scan for devices available for commissioning (mDNS or BLE)</p>
               </div>
-              <button
-                onClick={discover}
-                disabled={status !== 'connected' || discovering}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
-              >
-                <Search className={`w-4 h-4 ${discovering ? 'animate-pulse' : ''}`} />
-                {discovering ? 'Discovering...' : 'Discover'}
-              </button>
+              <div className="flex gap-2">
+                <div className="flex items-center gap-2 px-2 bg-gray-50 border border-gray-200 rounded-lg">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">Timeout</label>
+                  <input
+                    type="number"
+                    value={scanTimeout}
+                    onChange={e => setScanTimeout(e.target.value)}
+                    className="w-10 bg-transparent text-xs font-mono text-gray-600 focus:outline-none"
+                  />
+                </div>
+                <button
+                  onClick={discover}
+                  disabled={status !== 'connected' || discovering}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  <Search className={`w-4 h-4 ${discovering ? 'animate-pulse' : ''}`} />
+                  Discover
+                </button>
+                <button
+                  onClick={scanBle}
+                  disabled={status !== 'connected' || discovering}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  <Wifi className={`w-4 h-4 ${discovering ? 'animate-pulse' : ''}`} />
+                  Scan BLE
+                </button>
+              </div>
             </div>
+
+            {discovering && commissionMode === 'mac' && (
+              <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg">
+                <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                Scanning for BLE devices (Timeout: {scanTimeout}s)...
+              </div>
+            )}
 
             {discoverError && (
               <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{discoverError}</p>
@@ -168,35 +240,61 @@ export function Commission() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-500 border-b border-gray-200">
-                      <th className="pb-2 pr-4 font-medium">Name</th>
-                      <th className="pb-2 pr-4 font-medium">Vendor ID</th>
-                      <th className="pb-2 pr-4 font-medium">IP Address</th>
-                      <th className="pb-2 font-medium">Discriminator</th>
+                      <th className="pb-2 pr-4 font-medium">Name / ID</th>
+                      <th className="pb-2 pr-4 font-medium">Type</th>
+                      <th className="pb-2 pr-4 font-medium">Address / RSSI</th>
+                      <th className="pb-2 font-medium">Disc.</th>
+                      <th className="pb-2"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {discovered.map((d, i) => (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 group">
-                        <td className="py-2 pr-4 font-medium">{d.device_name || d.name || 'Unknown'}</td>
-                        <td className="py-2 pr-4">{d.vendor_id ?? '—'}</td>
-                        <td className="py-2 pr-4 font-mono text-xs text-gray-500">{d.addresses?.[0] || d.ip_address || '—'}</td>
-                        <td className="py-2 pr-4 font-mono">{d.long_discriminator ?? d.discriminator ?? '—'}</td>
-                        <td className="py-2 text-right">
-                          <button
-                            onClick={() => selectDevice(d)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Select for commissioning"
-                          >
-                            <MousePointer2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {discovered.map((d, i) => {
+                      const isBle = !!d.address;
+                      return (
+                        <tr key={i} className="border-b border-gray-100 hover:bg-gray-50 group">
+                          <td className="py-2 pr-4">
+                            <div className="font-medium text-gray-900">{d.device_name || d.name || 'Unknown'}</div>
+                            <div className="text-[10px] text-gray-400 font-mono">
+                              {d.instance_name || d.address || '—'}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-4">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${isBle ? 'bg-indigo-50 text-indigo-700' : 'bg-blue-50 text-blue-700'}`}>
+                              {isBle ? 'BLE' : 'mDNS'}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-4 font-mono text-xs text-gray-500">
+                            {isBle ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className={d.rssi && d.rssi > -70 ? 'text-green-600' : 'text-orange-600'}>
+                                  {d.rssi} dBm
+                                </span>
+                                {!d.is_matter && <span className="text-[10px] text-red-500 font-sans">(No Commissioning Window)</span>}
+                              </div>
+                            ) : (
+                              d.addresses?.[0] || d.ip_address || '—'
+                            )}
+                          </td>
+                          <td className="py-2 pr-4 font-mono">
+                            {d.matter_discriminator ?? d.long_discriminator ?? d.discriminator ?? '—'}
+                          </td>
+                          <td className="py-2 text-right">
+                            <button
+                              onClick={() => selectDevice(d)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Select for commissioning"
+                            >
+                              <MousePointer2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-gray-500 text-sm italic">No devices discovered yet. Click "Discover" to scan.</p>
+              <p className="text-gray-500 text-sm italic">No devices discovered yet. Use Discover or Scan BLE.</p>
             )}
           </div>
 
@@ -207,22 +305,28 @@ export function Commission() {
               <p className="text-xs text-gray-500 mt-0.5">Pair a new device to this Matter controller</p>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setCommissionMode('code')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer ${commissionMode === 'code' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'code' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 Setup Code / QR
               </button>
               <button
+                onClick={() => setCommissionMode('mac')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'mac' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                On BLE (MAC)
+              </button>
+              <button
                 onClick={() => setCommissionMode('network')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer ${commissionMode === 'network' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'network' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 On Network
               </button>
             </div>
 
-            {commissionMode === 'code' ? (
+            {commissionMode === 'code' && (
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Setup Code or QR Code</label>
                 <input
@@ -233,7 +337,34 @@ export function Commission() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            ) : (
+            )}
+
+            {commissionMode === 'mac' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-500 mb-1">MAC Address</label>
+                  <input
+                    type="text"
+                    value={macAddress}
+                    onChange={e => setMacAddress(e.target.value)}
+                    placeholder="XX:XX:XX:XX:XX:XX"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs text-gray-500 mb-1">Setup PIN Code</label>
+                  <input
+                    type="number"
+                    value={pinCode}
+                    onChange={e => setPinCode(e.target.value)}
+                    placeholder="12345678"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            )}
+
+            {commissionMode === 'network' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">PIN Code</label>
@@ -261,16 +392,16 @@ export function Commission() {
             <button
               onClick={commission}
               disabled={status !== 'connected' || commissioning}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 cursor-pointer"
+              className={`flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg text-sm font-bold disabled:opacity-50 cursor-pointer transition-all ${commissionMode === 'mac' ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-green-600 hover:bg-green-700'}`}
             >
               <Radio className={`w-4 h-4 ${commissioning ? 'animate-pulse' : ''}`} />
-              {commissioning ? 'Commissioning...' : 'Commission Device'}
+              {commissioning ? 'Commissioning...' : 'Start Commissioning'}
             </button>
 
             {commissioningStage && (
-              <div className="flex items-center gap-3 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm border border-blue-100">
+              <div className="flex items-center gap-3 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm border border-blue-100 animate-pulse">
                 <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <span className="font-medium">Commissioning Stage: {commissioningStage}</span>
+                <span className="font-semibold">{commissioningStage}</span>
               </div>
             )}
 

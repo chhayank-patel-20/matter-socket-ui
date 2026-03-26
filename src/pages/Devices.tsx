@@ -57,6 +57,13 @@ interface Fabric {
   label: string;
 }
 
+interface CommissioningWindowResult {
+  setup_pin_code: number;
+  setup_manual_code: string;
+  setup_qr_code: string;
+  discriminator: number;
+}
+
 function parseAttributes(attributes: Record<string, unknown>): EndpointData[] {
   const endpoints: Record<number, Record<number, Record<number, unknown>>> = {};
   for (const [key, value] of Object.entries(attributes)) {
@@ -238,7 +245,7 @@ export function Devices() {
   const [error, setError] = useState('');
   const [fabrics, setFabrics] = useState<Fabric[]>([]);
   const [ipAddresses, setIpAddresses] = useState<string[]>([]);
-  const [commissioningCode, setCommissioningCode] = useState<string | null>(null);
+  const [commWindowResult, setCommWindowResult] = useState<CommissioningWindowResult | null>(null);
   const [editingFabricLabel, setEditingFabricLabel] = useState(false);
   const [newFabricLabel, setNewFabricLabel] = useState('');
   const [aclEntries, setAclEntries] = useState<string>('[]');
@@ -262,7 +269,7 @@ export function Devices() {
       loadNode(selectedNodeId);
       setFabrics([]);
       setIpAddresses([]);
-      setCommissioningCode(null);
+      setCommWindowResult(null);
       setEditingFabricLabel(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -316,7 +323,7 @@ export function Devices() {
       } else {
         if (command === 'get_fabrics') setFabrics(r.result as Fabric[]);
         if (command === 'get_node_ip_addresses') setIpAddresses(r.result as string[]);
-        if (command === 'open_commissioning_window') setCommissioningCode(String(r.result));
+        if (command === 'open_commissioning_window') setCommWindowResult(r.result as CommissioningWindowResult);
         if (command === 'remove_node') {
           setSelectedNodeId(null);
           setNodes(nodes.filter(n => n.node_id !== selectedNodeId));
@@ -620,20 +627,37 @@ export function Devices() {
             </div>
 
             {/* Results Display */}
-            {(ipAddresses.length > 0 || fabrics.length > 0 || commissioningCode) && (
+            {(ipAddresses.length > 0 || fabrics.length > 0 || commWindowResult) && (
               <div className="px-6 pb-6 pt-2 border-t border-gray-100 grid gap-4 sm:grid-cols-2">
                 {ipAddresses.length > 0 && (
                   <div className="bg-blue-50 rounded-lg p-3">
-                    <h4 className="text-xs font-bold text-blue-800 mb-1">IP Addresses</h4>
+                    <h4 className="text-xs font-bold text-blue-800 mb-1 uppercase tracking-wider">IP Addresses</h4>
                     <ul className="text-xs font-mono text-blue-700 space-y-0.5">
                       {ipAddresses.map(ip => <li key={ip}>{ip}</li>)}
                     </ul>
                   </div>
                 )}
-                {commissioningCode && (
-                  <div className="bg-green-50 rounded-lg p-3">
-                    <h4 className="text-xs font-bold text-green-800 mb-1">Commissioning Code</h4>
-                    <p className="text-lg font-mono font-bold text-green-900">{commissioningCode}</p>
+                {commWindowResult && (
+                  <div className="col-span-full bg-green-50 rounded-lg p-4 border border-green-100 space-y-3">
+                    <h4 className="text-xs font-bold text-green-800 uppercase tracking-wider">Open Commissioning Window</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-[10px] text-green-600 font-bold uppercase">PIN Code</p>
+                        <p className="text-lg font-mono font-bold text-green-900">{commWindowResult.setup_pin_code}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-green-600 font-bold uppercase">Manual Code</p>
+                        <p className="text-lg font-mono font-bold text-green-900">{commWindowResult.setup_manual_code}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-green-600 font-bold uppercase">Discriminator</p>
+                        <p className="text-lg font-mono font-bold text-green-900">{commWindowResult.discriminator}</p>
+                      </div>
+                      <div className="col-span-2 md:col-span-1">
+                        <p className="text-[10px] text-green-600 font-bold uppercase">QR Code</p>
+                        <p className="text-[10px] font-mono font-medium text-green-800 break-all">{commWindowResult.setup_qr_code}</p>
+                      </div>
+                    </div>
                   </div>
                 )}
                 {fabrics.length > 0 && (

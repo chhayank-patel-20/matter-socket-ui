@@ -11,5 +11,9 @@
 ## Feature Fixes
 - **Decision:** Discovery API.
   - *Rationale:* Updated `Commission.tsx` to properly handle the list of commissionable nodes returned by `discover_commissionable_nodes`.
-- **Decision:** Groups Integration.
-  - *Rationale:* Created a dedicated `Groups.tsx` page to handle multicast commands and node memberships separately from individual device control.
+- **Decision:** Groups Implementation.
+  - *Rationale:* Created a dedicated `Groups.tsx` page to handle multicast commands and node memberships. Removed server-side group registry dependencies (which were causing "Invalid Command" errors) and replaced with a browser-based `localStorage` registry to preserve friendly naming.
+- **Decision:** BLE & MAC Commissioning.
+  - *Rationale:* Added support for `scan_ble_devices` and `commission_with_mac` to allow commissioning of devices via BLE MAC addresses when QR codes are unavailable.
+- **Decision:** API Documentation Parity.
+  - *Rationale:* Restructured `MatterInfo.tsx` to display full argument tables and response examples for all 27+ WebSocket commands, serving as an exhaustive live reference.
