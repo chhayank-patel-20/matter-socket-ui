@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { MatterNode, LogEntry, ConnectionStatus, MatterMessage } from '../types/matter';
 
@@ -40,6 +40,58 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [nodes, setNodes] = useState<MatterNode[]>([]);
   const [commandsState, setCommandsState] = useState<CommandsState>(DEFAULT_COMMANDS_STATE);
   const ws = useWebSocket();
+
+  const { status, sendCommand, onEvent } = ws;
+
+  useEffect(() => {
+    if (status === 'connected') {
+      // Auto-start listening on connect to get initial nodes and real-time updates
+      sendCommand('start_listening')
+        .then(resp => {
+          const result = (resp as { result?: { nodes: MatterNode[] } }).result;
+          if (result?.nodes) setNodes(result.nodes);
+        })
+        .catch(err => console.error('Failed to start listening:', err));
+    } else if (status === 'disconnected') {
+      setNodes([]);
+    }
+  }, [status, sendCommand]);
+
+  useEffect(() => {
+    const unsubs = [
+      onEvent('node_added', (data) => {
+        const newNode = data as MatterNode;
+        setNodes(prev => {
+          if (prev.find(n => n.node_id === newNode.node_id)) return prev;
+          return [...prev, newNode];
+        });
+      }),
+      onEvent('node_updated', (data) => {
+        const updatedNode = data as Partial<MatterNode> & { node_id: number };
+        setNodes(prev => prev.map(n => 
+          n.node_id === updatedNode.node_id ? { ...n, ...updatedNode } : n
+        ));
+      }),
+      onEvent('node_removed', (data) => {
+        const nodeId = data as number;
+        setNodes(prev => prev.filter(n => n.node_id !== nodeId));
+      }),
+      onEvent('attribute_updated', (data) => {
+        const [nodeId, attributePath, value] = data as [number, string, unknown];
+        setNodes(prev => prev.map(n => {
+          if (n.node_id !== nodeId) return n;
+          return {
+            ...n,
+            attributes: {
+              ...n.attributes,
+              [attributePath]: value
+            }
+          };
+        }));
+      })
+    ];
+    return () => unsubs.forEach(unsub => unsub());
+  }, [onEvent]);
 
   return (
     <WebSocketContext.Provider value={{ ...ws, wsUrl, setWsUrl, nodes, setNodes, commandsState, setCommandsState }}>

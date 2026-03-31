@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useWS } from '../context/WebSocketContext';
 import { Users, Plus, Trash2, Send, Database, CheckCircle, AlertCircle, List, ShieldCheck, X, Bug } from 'lucide-react';
+import { InfoButton } from '../components/InfoButton';
 import type { Group, NodeGroupMembership, GroupDebugInfo } from '../types/matter';
 
 const LOCAL_STORAGE_KEY = 'matter_ui_group_registry';
@@ -268,6 +269,19 @@ export function Groups() {
                 <Send className="w-5 h-5 text-green-600" />
                 <h2 className="font-semibold text-gray-800">Send Multicast Command</h2>
               </div>
+              <InfoButton
+                title="Matter Multicast"
+                description="Groups let you control multiple devices with a single multicast frame. Sending a command to a group takes one call regardless of how many devices are in it. Setup is a one-time operation per device."
+                code={`{
+  "command": "group_send_command",
+  "args": {
+    "group_id": 100,
+    "cluster_id": 6,
+    "command_name": "Off",
+    "payload": {}
+  }
+}`}
+              />
             </div>
             
             <div className="p-6 space-y-4">
@@ -361,14 +375,29 @@ export function Groups() {
                 <Users className="w-5 h-5 text-blue-600" />
                 <h2 className="font-semibold text-gray-800">Node Membership</h2>
               </div>
-              <button
-                onClick={() => handleAction('group_debug_info', { node_id: parseInt(nodeId) })}
-                disabled={!nodeId || !!loading}
-                title="Group Debug Info"
-                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer disabled:opacity-30"
-              >
-                <Bug className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleAction('group_debug_info', { node_id: parseInt(nodeId) })}
+                  disabled={!nodeId || !!loading}
+                  title="Group Debug Info"
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer disabled:opacity-30"
+                >
+                  <Bug className="w-4 h-4" />
+                </button>
+                <InfoButton
+                  title="Group Membership Flow"
+                  description="Group membership is stored on each device endpoint. To join a group, you must: 1. Install keys on device, 2. Map group to keyset, 3. Add device to group, 4. Configure Group ACL."
+                  code={`{
+  "command": "group_add",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1,
+    "group_id": 100,
+    "group_name": "Living Room"
+  }
+}`}
+                />
+              </div>
             </div>
             
             <div className="p-6 space-y-4">

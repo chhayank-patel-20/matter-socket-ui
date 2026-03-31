@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useWS } from '../context/WebSocketContext';
 import type { MatterNode } from '../types/matter';
 import { ChevronDown, ChevronRight, RefreshCw, Activity, Trash2, Info, Network, Shield, ExternalLink, Edit2, Check, X, Download } from 'lucide-react';
+import { InfoButton } from '../components/InfoButton';
 
 const CLUSTER_NAMES: Record<number, string> = {
   3: 'Identify',
@@ -95,7 +96,6 @@ function ClusterView({ nodeId, endpointId, clusterId, attrs }: { nodeId: number;
         node_id: nodeId,
         attribute_path: `${endpointId}/${clusterId}/${attrId}`,
       });
-      // The update will come via event if listening, or we might need to refresh node
     } catch (e) {
       alert(String(e));
     } finally {
@@ -103,14 +103,16 @@ function ClusterView({ nodeId, endpointId, clusterId, attrs }: { nodeId: number;
     }
   };
 
-  const handleWrite = async (attrId: number) => {
+  const handleWrite = async (attrId: number, value?: unknown) => {
     setLoading(attrId);
     try {
-      let val: unknown = editValue;
-      try {
-        val = JSON.parse(editValue);
-      } catch {
-        // use as string
+      let val: unknown = value !== undefined ? value : editValue;
+      if (value === undefined) {
+        try {
+          val = JSON.parse(editValue);
+        } catch {
+          // use as string
+        }
       }
       await sendCommand('write_attribute', {
         node_id: nodeId,
@@ -118,6 +120,23 @@ function ClusterView({ nodeId, endpointId, clusterId, attrs }: { nodeId: number;
         value: val,
       });
       setEditingAttr(null);
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleCommand = async (commandName: string, payload: Record<string, unknown> = {}) => {
+    setLoading(-1); // Use -1 to indicate cluster-wide loading
+    try {
+      await sendCommand('device_command', {
+        node_id: nodeId,
+        endpoint_id: endpointId,
+        cluster_id: clusterId,
+        command_name: commandName,
+        payload,
+      });
     } catch (e) {
       alert(String(e));
     } finally {
@@ -133,10 +152,167 @@ function ClusterView({ nodeId, endpointId, clusterId, attrs }: { nodeId: number;
       >
         {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         {clusterLabel(clusterId)}
+        {status === 'connected' && (
+          <span className="flex items-center gap-1 text-[10px] text-green-500 font-bold uppercase tracking-wider bg-green-50 px-1.5 py-0.5 rounded border border-green-100">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+            Live
+          </span>
+        )}
         <span className="ml-auto text-xs text-gray-400">{Object.keys(attrs).length} attrs</span>
       </button>
       {open && (
         <div className="divide-y divide-gray-100">
+          {/* Specialized Controls */}
+          <div className="px-4 py-3 bg-blue-50/30 flex flex-wrap gap-4 items-center">
+            {clusterId === 6 && ( // OnOff
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleCommand('On')}
+                  disabled={status !== 'connected' || loading !== null}
+                  className="px-3 py-1 bg-green-600 text-white rounded text-xs font-bold hover:bg-green-700 disabled:opacity-50"
+                >
+                  On
+                </button>
+                <button
+                  onClick={() => handleCommand('Off')}
+                  disabled={status !== 'connected' || loading !== null}
+                  className="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700 disabled:opacity-50"
+                >
+                  Off
+                </button>
+                <button
+                  onClick={() => handleCommand('Toggle')}
+                  disabled={status !== 'connected' || loading !== null}
+                  className="px-3 py-1 bg-gray-600 text-white rounded text-xs font-bold hover:bg-gray-700 disabled:opacity-50"
+                >
+                  Toggle
+                </button>
+              </div>
+            )}
+            {clusterId === 8 && ( // LevelControl
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <span className="text-[10px] font-bold text-gray-500 uppercase">Level</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="254"
+                  value={Number(attrs[0] || 0)}
+                  onChange={(e) => handleCommand('MoveToLevel', { level: parseInt(e.target.value), transitionTime: 0 })}
+                  disabled={status !== 'connected' || loading !== null}
+                  className="w-32 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <span className="text-xs font-mono w-8">{Number(attrs[0] || 0)}</span>
+              </div>
+            )}
+            {clusterId === 768 && ( // ColorControl
+              <div className="flex flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Hue</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="254"
+                    value={Number(attrs[1] || 0)}
+                    onChange={(e) => handleCommand('MoveToHue', { hue: parseInt(e.target.value), direction: 0, transitionTime: 0 })}
+                    disabled={status !== 'connected' || loading !== null}
+                    className="w-24 h-1.5 bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 to-red-500 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Sat</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="254"
+                    value={Number(attrs[2] || 0)}
+                    onChange={(e) => handleCommand('MoveToSaturation', { saturation: parseInt(e.target.value), transitionTime: 0 })}
+                    disabled={status !== 'connected' || loading !== null}
+                    className="w-24 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Temp</span>
+                  <input
+                    type="range"
+                    min="153"
+                    max="500"
+                    value={Number(attrs[7] || 153)}
+                    onChange={(e) => handleCommand('MoveToColorTemperature', { colorTemperatureMireds: parseInt(e.target.value), transitionTime: 0 })}
+                    disabled={status !== 'connected' || loading !== null}
+                    className="w-24 h-1.5 bg-gradient-to-r from-blue-200 to-orange-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+            {clusterId === 257 && ( // DoorLock
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleCommand('LockDoor')}
+                  disabled={status !== 'connected' || loading !== null}
+                  className="px-3 py-1 bg-orange-600 text-white rounded text-xs font-bold hover:bg-orange-700 disabled:opacity-50"
+                >
+                  Lock
+                </button>
+                <button
+                  onClick={() => handleCommand('UnlockDoor')}
+                  disabled={status !== 'connected' || loading !== null}
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-bold hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Unlock
+                </button>
+              </div>
+            )}
+            {clusterId === 513 && ( // Thermostat
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Heat Setpoint</span>
+                  <span className="text-xs font-mono">{(Number(attrs[18] || 0) / 100).toFixed(1)}°C</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => handleCommand('SetpointRaiseLower', { mode: 0, amount: 5 })}
+                      disabled={status !== 'connected' || loading !== null}
+                      className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center hover:bg-gray-200"
+                    >+</button>
+                    <button
+                      onClick={() => handleCommand('SetpointRaiseLower', { mode: 0, amount: -5 })}
+                      disabled={status !== 'connected' || loading !== null}
+                      className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center hover:bg-gray-200"
+                    >-</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase">Cool Setpoint</span>
+                  <span className="text-xs font-mono">{(Number(attrs[17] || 0) / 100).toFixed(1)}°C</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => handleCommand('SetpointRaiseLower', { mode: 1, amount: 5 })}
+                      disabled={status !== 'connected' || loading !== null}
+                      className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center hover:bg-gray-200"
+                    >+</button>
+                    <button
+                      onClick={() => handleCommand('SetpointRaiseLower', { mode: 1, amount: -5 })}
+                      disabled={status !== 'connected' || loading !== null}
+                      className="w-6 h-6 bg-gray-100 rounded flex items-center justify-center hover:bg-gray-200"
+                    >-</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {[1024, 1026, 1028, 1029, 1030].includes(clusterId) && ( // Measurements
+              <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-full border border-blue-100 shadow-sm">
+                <span className="text-[10px] font-bold text-blue-500 uppercase">Current Value</span>
+                <span className="text-sm font-bold text-blue-700">
+                  {clusterId === 1026 && `${(Number(attrs[0] || 0) / 100).toFixed(1)}°C`}
+                  {clusterId === 1024 && `${Number(attrs[0] || 0)} lx`}
+                  {clusterId === 1028 && `${Number(attrs[0] || 0)} hPa`}
+                  {clusterId === 1029 && `${Number(attrs[0] || 0)} L/h`}
+                  {clusterId === 1030 && `${(Number(attrs[0] || 0) / 100).toFixed(1)}%`}
+                </span>
+              </div>
+            )}
+            {loading === -1 && <RefreshCw className="w-3 h-3 animate-spin text-blue-600" />}
+          </div>
+
           {Object.entries(attrs).map(([attrIdStr, value]) => {
             const attrId = parseInt(attrIdStr);
             const isEditing = editingAttr === attrId;
@@ -239,7 +415,6 @@ export function Devices() {
   const { status, sendCommand, nodes, setNodes } = useWS();
   const [searchParams] = useSearchParams();
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
-  const [nodeData, setNodeData] = useState<MatterNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -259,6 +434,8 @@ export function Devices() {
   const [bindingClusterId, setBindingClusterId] = useState('6');
   const [bindingSourceEndpoint, setBindingSourceEndpoint] = useState('1');
 
+  const nodeData = nodes.find(n => n.node_id === selectedNodeId) || null;
+
   useEffect(() => {
     const nodeParam = searchParams.get('node');
     if (nodeParam) setSelectedNodeId(parseInt(nodeParam));
@@ -266,23 +443,19 @@ export function Devices() {
 
   useEffect(() => {
     if (selectedNodeId !== null && status === 'connected') {
-      loadNode(selectedNodeId);
       setFabrics([]);
       setIpAddresses([]);
       setCommWindowResult(null);
       setEditingFabricLabel(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedNodeId, status]);
 
   const loadNode = async (nodeId: number) => {
     setLoading(true);
     setError('');
     try {
-      const resp = await sendCommand('get_node', { node_id: nodeId });
-      const r = resp as { result?: MatterNode; error_code?: string; details?: string };
-      if (r.error_code) setError(r.details || r.error_code);
-      else if (r.result) setNodeData(r.result);
+      // Re-interview node to get fresh attributes
+      await sendCommand('interview_node', { node_id: nodeId });
     } catch (e) {
       setError(String(e));
     } finally {
@@ -427,7 +600,17 @@ export function Devices() {
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Network & Commissioning</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Network & Commissioning</h3>
+                  <InfoButton
+                    title="Multi-Fabric Commissioning"
+                    description="Matter supports multiple controllers (fabrics) managing the same device. To add this device to another controller (e.g. Apple Home or Google Home), use 'Open Comm. Window' to generate a temporary pairing code."
+                    code={`{
+  "command": "open_commissioning_window",
+  "args": { "node_id": 1, "timeout": 300 }
+}`}
+                  />
+                </div>
                 <div className="grid grid-cols-1 gap-2">
                   <button
                     onClick={() => handleAction('get_node_ip_addresses')}
@@ -447,7 +630,17 @@ export function Devices() {
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Fabrics</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Fabrics</h3>
+                  <InfoButton
+                    title="Node Fabrics"
+                    description="Each controller managing a device is assigned a 'Fabric Index'. You can see all fabrics this node belongs to and update its label for easier identification in other controllers."
+                    code={`{
+  "command": "get_fabrics",
+  "args": { "node_id": 1 }
+}`}
+                  />
+                </div>
                 <div className="grid grid-cols-1 gap-2">
                   <button
                     onClick={() => handleAction('get_fabrics')}

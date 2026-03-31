@@ -8,7 +8,7 @@ export function useWebSocket() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRef = useRef<Map<string, (result: unknown) => void>>(new Map());
-  const eventHandlersRef = useRef<Map<string, (data: unknown) => void>>(new Map());
+  const eventHandlersRef = useRef<Map<string, Set<(data: unknown) => void>>>(new Map());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectUrlRef = useRef<string>('');
   const manualDisconnectRef = useRef(false);
@@ -56,10 +56,10 @@ export function useWebSocket() {
         }
 
         if (msg.event) {
-          const handler = eventHandlersRef.current.get(msg.event);
-          if (handler) handler(msg.data);
+          const handlers = eventHandlersRef.current.get(msg.event);
+          if (handlers) handlers.forEach(handler => handler(msg.data));
           const wildcard = eventHandlersRef.current.get('*');
-          if (wildcard) wildcard(msg);
+          if (wildcard) wildcard.forEach(handler => handler(msg));
         }
       } catch {
         addLog('error', `Parse error: ${event.data}`);
@@ -118,8 +118,17 @@ export function useWebSocket() {
   }, [addLog]);
 
   const onEvent = useCallback((event: string, handler: (data: unknown) => void) => {
-    eventHandlersRef.current.set(event, handler);
-    return () => eventHandlersRef.current.delete(event);
+    if (!eventHandlersRef.current.has(event)) {
+      eventHandlersRef.current.set(event, new Set());
+    }
+    const handlers = eventHandlersRef.current.get(event)!;
+    handlers.add(handler);
+    return () => {
+      handlers.delete(handler);
+      if (handlers.size === 0) {
+        eventHandlersRef.current.delete(event);
+      }
+    };
   }, []);
 
   useEffect(() => {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useWS } from '../context/WebSocketContext';
 import type { DiscoveredDevice } from '../types/matter';
 import { Search, Radio, CheckCircle, AlertCircle, Wifi, Cpu, Tag, Settings, MousePointer2, X } from 'lucide-react';
+import { InfoButton } from '../components/InfoButton';
 
 export function Commission() {
   const { status, sendCommand, onEvent } = useWS();
@@ -300,30 +301,75 @@ export function Commission() {
 
           {/* Commission */}
           <div id="commission-form" className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-800">Commission Device</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Pair a new device to this Matter controller</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Commission Device</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Pair a new device to this Matter controller</p>
+              </div>
+              <InfoButton
+                title="Commissioning"
+                description="Commissioning is the process of securely adding a new device to your Matter fabric. You'll need the device's setup code (QR or numeric) and a way for the controller to talk to it (BLE or mDNS)."
+              />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setCommissionMode('code')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'code' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                Setup Code / QR
-              </button>
-              <button
-                onClick={() => setCommissionMode('mac')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'mac' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                On BLE (MAC)
-              </button>
-              <button
-                onClick={() => setCommissionMode('network')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'network' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-              >
-                On Network
-              </button>
+            <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCommissionMode('code')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'code' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Setup Code / QR
+                </button>
+                <button
+                  onClick={() => setCommissionMode('mac')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'mac' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  On BLE (MAC)
+                </button>
+                <button
+                  onClick={() => setCommissionMode('network')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${commissionMode === 'network' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  On Network
+                </button>
+              </div>
+
+              {commissionMode === 'code' && (
+                <InfoButton
+                  title="QR / Manual Code"
+                  description="Supports both QR-code syntax (MT:...) and 11-digit manual pairing codes. The server automatically uses BLE when a discriminator can be extracted from the code."
+                  code={`{
+  "command": "commission_with_code",
+  "args": { "code": "MT:Y3D0-M15AJ0648G00" }
+}`}
+                />
+              )}
+              {commissionMode === 'mac' && (
+                <InfoButton
+                  title="BLE (MAC) Commissioning"
+                  description="Commission by BLE MAC address and PIN code. The server scans for the device, extracts the discriminator from the Matter BLE advertisement, and commissions it."
+                  code={`{
+  "command": "commission_with_mac",
+  "args": {
+    "mac_address": "50:3D:D1:C0:5B:AB",
+    "setup_pin_code": 12345678
+  }
+}`}
+                />
+              )}
+              {commissionMode === 'network' && (
+                <InfoButton
+                  title="On-Network Commissioning"
+                  description="Commission a device already on the network (e.g. via Ethernet or already joined to WiFi). Uses mDNS to find the device by its 12-bit discriminator."
+                  code={`{
+  "command": "commission_on_network",
+  "args": {
+    "setup_pin_code": 20202021,
+    "ip_addr": "192.168.1.42"
+  }
+}`}
+                />
+              )}
             </div>
 
             {commissionMode === 'code' && (
@@ -420,9 +466,19 @@ export function Commission() {
         <div className="space-y-6">
           {/* Commissioning Setup */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
-            <div className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-800">Setup</h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-gray-600" />
+                <h2 className="text-lg font-semibold text-gray-800">Setup</h2>
+              </div>
+              <InfoButton
+                title="Commissioning Setup"
+                description="Before commissioning WiFi or Thread devices, you MUST provide the network credentials. The controller will push these to the device during the commissioning flow."
+                code={`{
+  "command": "set_wifi_credentials",
+  "args": { "ssid": "MyWiFi", "credentials": "MyPassword" }
+}`}
+              />
             </div>
 
             {setupResult && (

@@ -15,10 +15,20 @@
 - [x] Phase 8: Group UI/UX overhaul and local registry migration.
 - [x] Enhanced error handling for CHIP 0xAC and 0x32 errors with automatic retries.
 - [x] Phase 9: Align UI with latest `docs/API.md` (Groups, Debugging, and Complete Reference).
+- [x] Phase 10: Real-time Attribute Subscriptions & Specialized Cluster UI.
+    - [x] Updated WebSocket hook to support multiple event listeners.
+    - [x] Implemented global node state synchronization via `start_listening` events.
+    - [x] Added specialized UI controls for OnOff, Level, Color, Lock, Thermostat, and Measurement clusters.
+    - [x] Integrated "Live" status indicators for clusters with active subscriptions.
+- [x] Phase 11: Integrated UI Documentation (Info Buttons).
+    - [x] Created reusable `InfoButton` modal component.
+    - [x] Added interactive help for Commissioning (QR, BLE, Network).
+    - [x] Added interactive help for Multi-Fabric concepts and Fabric management.
+    - [x] Added interactive help for Multicast/Groups setup and control.
 
 ## Ongoing
-- [ ] No active tasks; implementation aligned with latest `docs/API.md`.
+- [ ] No active tasks.
 
 ## Future
-- [ ] Implement attribute subscription UI for live updates without manual refresh.
-- [ ] Add more sophisticated cluster UI (sliders for LevelControl, Color Pickers for ColorControl).
+- [ ] Add history/graphing for measurement clusters (Temperature, Humidity, etc.).
+- [ ] Implement Scene management (Cluster 5).
