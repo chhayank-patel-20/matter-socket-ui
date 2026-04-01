@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useWS } from '../context/WebSocketContext';
-import type { MatterNode } from '../types/matter';
 import { ChevronDown, ChevronRight, RefreshCw, Activity, Trash2, Info, Network, Shield, ExternalLink, Edit2, Check, X, Download } from 'lucide-react';
 import { InfoButton } from '../components/InfoButton';
 
@@ -693,9 +692,28 @@ export function Devices() {
               <div className="grid lg:grid-cols-2 gap-8">
                 {/* Bindings */}
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-purple-600" />
-                    <h3 className="text-sm font-semibold text-gray-800">Node Bindings</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-purple-600" />
+                      <h3 className="text-sm font-semibold text-gray-800">Node Bindings</h3>
+                    </div>
+                    <InfoButton
+                      title="Node Bindings"
+                      description="Bindings allow one node to directly control another (e.g. a switch controlling a light) without the controller's involvement. Bindings are defined on the source endpoint."
+                      code={`{
+  "command": "binding_add",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "target_node_id": 2,
+    "target_endpoint_id": 1,
+    "cluster_id": 6
+  }
+}`}
+                    />
+                  </div>
+                  <div className="bg-purple-50 border border-purple-100 rounded-lg p-3 text-[10px] text-purple-800 leading-relaxed italic">
+                    <strong>Note:</strong> <code>Set Node Binding List</code> replaces the entire list on that endpoint.
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -761,23 +779,61 @@ export function Devices() {
 
                 {/* ACL */}
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-red-600" />
-                    <h3 className="text-sm font-semibold text-gray-800">Access Control (ACL)</h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-red-600" />
+                      <h3 className="text-sm font-semibold text-gray-800">Access Control (ACL)</h3>
+                    </div>
+                    <InfoButton
+                      title="Access Control Lists"
+                      description="ACLs define which controllers and groups can talk to this node. Each entry specifies a privilege level and authentication mode (CASE for unicast, Group for multicast)."
+                      code={`{
+  "command": "set_acl_entry",
+  "args": {
+    "node_id": 1,
+    "entry": [
+      { "privilege": 5, "authMode": 2, "subjects": null, "targets": null, "fabricIndex": 1 },
+      { "privilege": 3, "authMode": 3, "subjects": [100], "targets": null, "fabricIndex": 1 }
+    ]
+  }
+}`}
+                    />
                   </div>
-                  <p className="text-[10px] text-gray-500">Configure ACL entries for this node. CAUTION: Incorrect settings can lock you out.</p>
-                  <textarea
-                    value={aclEntries}
-                    onChange={e => setAclEntries(e.target.value)}
-                    className="w-full h-40 p-2 border border-gray-200 rounded text-[10px] font-mono"
-                    placeholder="[ { ... } ]"
-                  />
+                  <div className="bg-red-50 border border-red-100 rounded-lg p-3 text-[10px] text-red-800 leading-relaxed">
+                    <strong>CRITICAL:</strong> <code>Set ACL Entries</code> replaces the <strong>entire</strong> list. 
+                    You MUST include an Admin entry for yourself (authMode: 2, privilege: 5) or you will be locked out of the node.
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-[10px] text-gray-400 uppercase font-bold">ACL Entries (JSON Array)</label>
+                      <button 
+                        onClick={() => setAclEntries('[\n  { "privilege": 5, "authMode": 2, "subjects": null, "targets": null, "fabricIndex": 1 }\n]')}
+                        className="text-[10px] text-blue-600 hover:underline"
+                      >
+                        Reset to Safe Admin Default
+                      </button>
+                    </div>
+                    <textarea
+                      value={aclEntries}
+                      onChange={e => setAclEntries(e.target.value)}
+                      className="w-full h-40 p-2 border border-gray-200 rounded text-[10px] font-mono focus:ring-1 focus:ring-red-500 outline-none"
+                      placeholder="[ { ... } ]"
+                    />
+                  </div>
                   <button
-                    onClick={() => handleAction('set_acl_entry', { entry: JSON.parse(aclEntries) })}
+                    onClick={() => {
+                      try {
+                        const parsed = JSON.parse(aclEntries);
+                        if (!Array.isArray(parsed)) throw new Error('Must be a JSON array');
+                        handleAction('set_acl_entry', { entry: parsed });
+                      } catch (e) {
+                        alert('Invalid JSON: ' + e);
+                      }
+                    }}
                     disabled={status !== 'connected' || !!actionLoading}
-                    className="w-full py-2 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700"
+                    className="w-full py-2 bg-red-600 text-white rounded-lg text-xs font-medium hover:bg-red-700 shadow-sm"
                   >
-                    Set ACL Entries
+                    Set ACL Entries (Full Replace)
                   </button>
                 </div>
               </div>

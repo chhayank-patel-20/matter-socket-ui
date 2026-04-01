@@ -21,3 +21,7 @@
   - *Rationale:* Enforced a 16-character limit for `group_name` in `Groups.tsx` to align with Matter spec requirements, preventing server-side validation errors.
 - **Decision:** Interactive Group Debugging.
   - *Rationale:* Integrated a `group_debug_info` view in the Groups management page to provide immediate visibility into raw device-side key state for troubleshooting multicast failures.
+- **Decision:** Lazy State Initialization for Local Storage.
+  - *Rationale:* Refactored `Groups.tsx` to use lazy initialization for `registeredGroups`. This ensures data is synchronously loaded from `localStorage` on component mount, preventing race conditions where the initial empty state `[]` could overwrite existing saved data.
+- **Decision:** Group Selection UX Fix.
+  - *Rationale:* Decoupled the "Manual ID" state from the `cmdGroupId` to prevent the UI from glitching and hiding the input field as soon as a user started typing a numeric Group ID.

@@ -12,7 +12,18 @@ export function Groups() {
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Client-side Registry Management State (Replacing server-side registry)
-  const [registeredGroups, setRegisteredGroups] = useState<Group[]>([]);
+  const [registeredGroups, setRegisteredGroups] = useState<Group[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to load local group registry:', e);
+        return [];
+      }
+    }
+    return [];
+  });
   const [regGroupId, setRegGroupId] = useState('');
   const [regGroupName, setRegGroupName] = useState('');
 
@@ -27,6 +38,7 @@ export function Groups() {
   const [debugInfo, setDebugInfo] = useState<GroupDebugInfo | null>(null);
 
   // Group Command State
+  const [isCustomGroup, setIsCustomGroup] = useState(false);
   const [cmdGroupId, setCmdGroupId] = useState('');
   const [clusterId, setClusterId] = useState('6');
   const [commandName, setCommandName] = useState('On');
@@ -37,18 +49,6 @@ export function Groups() {
   const [keyHex, setKeyHex] = useState('0102030405060708090a0b0c0d0e0f10');
   const [bindGroupId, setBindGroupId] = useState('');
   const [bindKeysetId, setBindKeysetId] = useState('1');
-
-  // Load groups from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved) {
-      try {
-        setRegisteredGroups(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load local group registry:', e);
-      }
-    }
-  }, []);
 
   // Save groups to localStorage whenever they change
   useEffect(() => {
@@ -302,8 +302,16 @@ export function Groups() {
                 <label className="block text-xs font-bold text-gray-400 uppercase mb-1.5">Target Group</label>
                 <div className="flex gap-2">
                   <select
-                    value={cmdGroupId}
-                    onChange={e => setCmdGroupId(e.target.value)}
+                    value={isCustomGroup ? 'custom' : cmdGroupId}
+                    onChange={e => {
+                      if (e.target.value === 'custom') {
+                        setIsCustomGroup(true);
+                        setCmdGroupId('');
+                      } else {
+                        setIsCustomGroup(false);
+                        setCmdGroupId(e.target.value);
+                      }
+                    }}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none"
                   >
                     <option value="">Select a group to target...</option>
@@ -312,12 +320,13 @@ export function Groups() {
                     ))}
                     <option value="custom">Manual ID...</option>
                   </select>
-                  {cmdGroupId === 'custom' && (
+                  {isCustomGroup && (
                     <input
                       type="number"
+                      value={cmdGroupId}
                       onChange={e => setCmdGroupId(e.target.value)}
                       placeholder="Group ID"
-                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none"
                     />
                   )}
                 </div>
@@ -356,7 +365,7 @@ export function Groups() {
 
               <button
                 onClick={() => sendGroupCmd()}
-                disabled={status !== 'connected' || !!loading || !cmdGroupId || cmdGroupId === 'custom'}
+                disabled={status !== 'connected' || !!loading || !cmdGroupId}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
               >
                 <Send className="w-4 h-4" /> 
@@ -588,9 +597,16 @@ export function Groups() {
                 <button
                   onClick={() => handleAction('group_add_key_set', { node_id: parseInt(nodeId), keyset_id: parseInt(keysetId), key_hex: keyHex })}
                   disabled={status !== 'connected' || !!loading || !nodeId}
-                  className="w-full py-1.5 bg-orange-600 text-white rounded text-xs font-medium hover:bg-orange-700 cursor-pointer"
+                  className="flex-1 py-1.5 bg-orange-600 text-white rounded text-xs font-medium hover:bg-orange-700 cursor-pointer"
                 >
-                  Force Add Key Set
+                  Force Add Keyset
+                </button>
+                <button
+                  onClick={() => handleAction('group_key_set_remove', { node_id: parseInt(nodeId), keyset_id: parseInt(keysetId) })}
+                  disabled={status !== 'connected' || !!loading || !nodeId || keysetId === '0'}
+                  className="flex-1 py-1.5 bg-red-50 text-red-700 border border-red-100 rounded text-xs font-medium hover:bg-red-100 cursor-pointer"
+                >
+                  Force Remove
                 </button>
               </div>
 
@@ -628,18 +644,31 @@ export function Groups() {
           </div>
 
           {/* Test Data Initialization */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-3">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-3 border-orange-100">
             <h2 className="text-xs font-bold text-orange-600 uppercase tracking-wider">Maintenance</h2>
             <p className="text-[10px] text-gray-500 leading-relaxed">
-              Force re-initialize test group keys. Use if multicast fails consistently.
+              Force operations to recover devices from inconsistent group states.
             </p>
-            <button
-              onClick={() => handleAction('init_group_testing_data', {})}
-              disabled={status !== 'connected' || !!loading}
-              className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-700 rounded text-[10px] font-bold hover:bg-orange-100 disabled:opacity-50 cursor-pointer"
-            >
-              <Database className="w-3 h-3" /> Re-init Test Data
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleAction('init_group_testing_data', {})}
+                disabled={status !== 'connected' || !!loading}
+                className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 text-orange-700 rounded text-[10px] font-bold hover:bg-orange-100 disabled:opacity-50 cursor-pointer border border-orange-100"
+              >
+                <Database className="w-3 h-3" /> Re-init Test Data
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('NUCLEAR OPTION: This will brute-force remove ALL keysets (1-63) and clear all group tracking for this node. Fabric remains intact. Continue?')) {
+                    handleAction('group_reset_node', { node_id: parseInt(nodeId) });
+                  }
+                }}
+                disabled={status !== 'connected' || !!loading || !nodeId}
+                className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-700 rounded text-[10px] font-bold hover:bg-red-100 disabled:opacity-50 cursor-pointer border border-red-100"
+              >
+                <Trash2 className="w-3 h-3" /> Full Node Reset
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -242,6 +242,23 @@ const WS_COMMANDS = [
     response: null
   },
   {
+    cmd: 'group_key_set_remove',
+    desc: 'Advanced: Remove a specific keyset from a node by ID.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' },
+      { name: 'keyset_id', type: 'int', req: true, def: '', desc: 'Keyset ID to remove' }
+    ],
+    response: null
+  },
+  {
+    cmd: 'group_reset_node',
+    desc: 'Nuclear: Full group state reset on a node without removing the fabric.',
+    args: [
+      { name: 'node_id', type: 'int', req: true, def: '', desc: 'Target node' }
+    ],
+    response: null
+  },
+  {
     cmd: 'group_get_membership',
     desc: 'Query which groups an endpoint belongs to (live data).',
     args: [

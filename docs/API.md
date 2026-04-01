@@ -838,7 +838,7 @@ Replaces the **full ACL** on the node's endpoint 0. The list you provide becomes
 | Field | Type | Description |
 |---|---|---|
 | `privilege` | int | `1`=View, `3`=Operate, `4`=Manage, `5`=Admin |
-| `authMode` | int | `1`=PASE, `2`=CASE (unicast), `3`=Group (multicast) |
+| `authMode` | int | `1`=PASE (commissioning), `2`=CASE (unicast), `3`=Group (multicast) |
 | `subjects` | list[int] \| null | Node IDs for CASE entries; Group IDs for Group entries; `null` = any subject |
 | `targets` | list \| null | Cluster/endpoint scope restriction; `null` = all |
 | `fabricIndex` | int | Fabric index (use `1` for the controller's fabric) |
@@ -1036,6 +1036,138 @@ Sends `Groups.RemoveAllGroups` to the device, waits 300 ms for the device to com
   }
 }
 ```
+
+**Response:** `{ "message_id": "1", "result": null }`
+
+---
+
+**`group_key_set_remove`** — Remove a specific keyset from a node by keyset ID
+
+Sends `GroupKeyManagement.KeySetRemove` to endpoint 0 of the target node. Use `group_debug_info` first to discover which keyset IDs are currently installed on the device.
+
+> **When to use:** Call this when a keyset is orphaned but `group_remove_all` cannot clean it up — for example when the same group was added to multiple endpoints and you only want to reclaim one keyset slot without resetting everything. This is an advanced operation; prefer `group_remove` or `group_remove_all` for normal cleanup.
+
+> **Guard:** `keyset_id=0` (the IPK) is rejected with `InvalidArguments`. Removing the IPK would break all unicast (CASE) communication with the node.
+
+> **Device errors propagate:** If the device returns `NOT_FOUND` (keyset does not exist), the error is raised to the caller. Check `group_debug_info` first.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_key_set_remove",
+  "args": {
+    "node_id": 1,
+    "keyset_id": 101
+  }
+}
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node_id` | Yes | Target node |
+| `keyset_id` | Yes | Keyset ID to remove (1–65534; 0 is rejected) |
+
+**Errors:**
+- `InvalidArguments` — `keyset_id` is 0 (IPK removal forbidden)
+- `InteractionModelError` — device returned `NOT_FOUND` (keyset does not exist on device)
+
+**Response:** `{ "message_id": "1", "result": null }`
+
+---
+
+**`group_reset_node`** — Full group state reset on a node without removing the fabric
+
+Use this when `group_remove_all` cannot recover the node — for example when the same group was provisioned across multiple endpoints and the keyset table is full with no clean way to identify which individual keysets to remove.
+
+**What it does:**
+
+1. Calls `GroupKeyManagement.KeySetRemove` for every keyset ID 1–63. `NOT_FOUND` errors are silently ignored (expected for IDs that were never written). This empties all keyset slots on the device.
+2. Removes all Group-auth ACL entries from the device's Access Control cluster (same cleanup as `group_remove_all`).
+3. Clears all server-side group tracking for this node: `node_keysets`, per-group `group_nodes` entries, and (for groups with no remaining provisioned nodes) `group_keys` store entries.
+
+> **Does NOT send `RemoveAllGroups`:** Removing all keysets renders all groupcast messages undecryptable by the device, which is functionally equivalent. If you need the device's group membership tables explicitly cleared, call `group_remove_all` for each application endpoint after this command.
+
+> **Fabric stays intact:** The node remains paired to the controller. Only group-related state is cleared. Call `group_add` to re-provision the node for any groups.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_reset_node",
+  "args": {
+    "node_id": 1
+  }
+}
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node_id` | Yes | Target node to reset group state on |
+
+**Response:** `{ "message_id": "1", "result": null }`
+
+---
+
+**`group_key_set_remove`** — Remove a specific keyset from a node by keyset ID
+
+Sends `GroupKeyManagement.KeySetRemove` to endpoint 0 of the target node. Use `group_debug_info` first to discover which keyset IDs are currently installed on the device.
+
+> **When to use:** Call this when a keyset is orphaned but `group_remove_all` cannot clean it up — for example when the same group was added to multiple endpoints and you only want to reclaim one keyset slot without resetting everything. This is an advanced operation; prefer `group_remove` or `group_remove_all` for normal cleanup.
+
+> **Guard:** `keyset_id=0` (the IPK) is rejected with `InvalidArguments`. Removing the IPK would break all unicast (CASE) communication with the node.
+
+> **Device errors propagate:** If the device returns `NOT_FOUND` (keyset does not exist), the error is raised to the caller. Check `group_debug_info` first.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_key_set_remove",
+  "args": {
+    "node_id": 1,
+    "keyset_id": 101
+  }
+}
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node_id` | Yes | Target node |
+| `keyset_id` | Yes | Keyset ID to remove (1–65534; 0 is rejected) |
+
+**Errors:**
+- `InvalidArguments` — `keyset_id` is 0 (IPK removal forbidden)
+- `InteractionModelError` — device returned `NOT_FOUND` (keyset does not exist on device)
+
+**Response:** `{ "message_id": "1", "result": null }`
+
+---
+
+**`group_reset_node`** — Full group state reset on a node without removing the fabric
+
+Use this when `group_remove_all` cannot recover the node — for example when the same group was provisioned across multiple endpoints and the keyset table is full with no clean way to identify which individual keysets to remove.
+
+**What it does:**
+
+1. Calls `GroupKeyManagement.KeySetRemove` for every keyset ID 1–63. `NOT_FOUND` errors are silently ignored (expected for IDs that were never written). This empties all keyset slots on the device.
+2. Removes all Group-auth ACL entries from the device's Access Control cluster (same cleanup as `group_remove_all`).
+3. Clears all server-side group tracking for this node: `node_keysets`, per-group `group_nodes` entries, and (for groups with no remaining provisioned nodes) `group_keys` store entries.
+
+> **Does NOT send `RemoveAllGroups`:** Removing all keysets renders all groupcast messages undecryptable by the device, which is functionally equivalent. If you need the device's group membership tables explicitly cleared, call `group_remove_all` for each application endpoint after this command.
+
+> **Fabric stays intact:** The node remains paired to the controller. Only group-related state is cleared. Call `group_add` to re-provision the node for any groups.
+
+```json
+{
+  "message_id": "1",
+  "command": "group_reset_node",
+  "args": {
+    "node_id": 1
+  }
+}
+```
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `node_id` | Yes | Target node to reset group state on |
 
 **Response:** `{ "message_id": "1", "result": null }`
 

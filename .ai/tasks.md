@@ -25,6 +25,10 @@
     - [x] Added interactive help for Commissioning (QR, BLE, Network).
     - [x] Added interactive help for Multi-Fabric concepts and Fabric management.
     - [x] Added interactive help for Multicast/Groups setup and control.
+- [x] Phase 12: Group Persistence & UX Improvements.
+    - [x] Fixed `localStorage` race conditions with lazy state initialization.
+    - [x] Fixed "Manual ID" input glitch by decoupling its selection state.
+    - [x] Cleaned up unused imports in `Devices.tsx` to fix build errors.
 
 ## Ongoing
 - [ ] No active tasks.
